@@ -41,9 +41,7 @@ PRODUCT_MAP = {
     "glasses": {"name": "Anti-Radiation Glasses", "shopee": "https://s.shopee.ph/3B5n3yEf2m"},
 }
 
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
-
+model = genai.GenerativeModel('gemini-1.5-flash')
 MAX_TURNS = 6
 chat_sessions = defaultdict(lambda: deque(maxlen=MAX_TURNS))
 RATE_LIMIT = defaultdict(list)
