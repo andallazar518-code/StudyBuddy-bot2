@@ -1,6 +1,7 @@
 from flask import Flask, request
 import requests
 import os
+import time # = DAGDAG TO
 
 app = Flask(__name__)
 
@@ -23,11 +24,15 @@ def send_message(sender_id, text):
     payload = {"recipient": {"id": sender_id}, "message": {"text": text[:2000]}}
     requests.post(url, json=payload)
 
+def send_typing(sender_id, action="typing_on"):
+    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+    payload = {"recipient": {"id": sender_id}, "sender_action": action}
+    requests.post(url, json=payload)
+
 def check_product(user_message):
     user_message = user_message.lower()
     for product, p in PRODUCT_MAP.items():
         if product in user_message:
-            # Auto detect language
             if any(word in user_message for word in ["what", "how", "where", "can", "is", "do", "help"]):
                 return f"💡 Are you looking for this? \n{p['name']}\nShopee: {p['shopee']}"
             else:
@@ -36,7 +41,6 @@ def check_product(user_message):
 
 def ask_groq(user_message):
     try:
-        # Auto detect language
         if any(word in user_message.lower() for word in ["what", "how", "where", "can", "is", "do", "help"]):
             language = "English"
         else:
@@ -49,18 +53,15 @@ def ask_groq(user_message):
 
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        data = {
-            "model": "llama-3.1-8b-instant",
-            "messages": [{"role": "user", "content": prompt}]
-        }
+        data = {"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}]}
         r = requests.post(url, headers=headers, json=data, timeout=15)
         return r.json()['choices'][0]['message']['content']
     except Exception as e:
         print("GROQ ERROR:", e)
         if language == "English":
-            return "Oops my AI is resting 😅 What do you need? Calculator, notebook, bag?"
+            return "Oops my AI is resting 😅 What do you need?"
         else:
-            return "Uy naubos muna AI ko 😅 Ano need mo? Calculator, notebook, bag?"
+            return "Uy naubos muna AI ko 😅 Ano need mo?"
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -78,19 +79,22 @@ def webhook():
                     if 'message' in event and 'text' in event['message']:
                         user_message = event['message']['text']
                         
-                        product_reply = check_product(user_message)
+                        send_typing(sender_id, "typing_on") # = START TYPING
+                        time.sleep(1) # = Para 1 sec magtype muna. Tanggalin mo to kung ayaw mo delay
                         
+                        product_reply = check_product(user_message)
                         if product_reply:
                             reply = product_reply
                         else:
                             reply = ask_groq(user_message)
                         
                         send_message(sender_id, reply)
+                        send_typing(sender_id, "typing_off") # = STOP TYPING
         return "ok", 200
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy Bot is Live with Groq + Bilingual", 200
+    return "StudyBuddy Bot is Live with Typing", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
