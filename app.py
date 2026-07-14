@@ -42,7 +42,7 @@ PRODUCT_MAP = {
 }
 
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash-8b-latest')
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 MAX_TURNS = 6
 chat_sessions = defaultdict(lambda: deque(maxlen=MAX_TURNS))
