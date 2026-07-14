@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-import google.generativeai as genai
 import requests
 import os
 import time
@@ -41,7 +40,6 @@ PRODUCT_MAP = {
     "glasses": {"name": "Anti-Radiation Glasses", "shopee": "https://s.shopee.ph/3B5n3yEf2m"},
 }
 
-model = genai.GenerativeModel('gemini-3.5-flash')
 MAX_TURNS = 6
 chat_sessions = defaultdict(lambda: deque(maxlen=MAX_TURNS))
 RATE_LIMIT = defaultdict(list)
@@ -96,9 +94,23 @@ def get_ai_response(user_id, user_message):
     history = list(chat_sessions[user_id])
     prompt = "Ikaw si Study Buddy AI. Sumagot ng TAGALOG. Max 4 sentences. Friendly ka.\n\n"
     for msg in history: prompt += f"{msg['role']}: {msg['parts'][0]}\n"
+    
+    #  LOW-MEMORY FIX: Pure HTTP call utilizing gemini-3.5-flash
+    url = f"https://googleapis.com{GOOGLE_API_KEY}"
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    headers = {"Content-Type": "application/json"}
+    
     try:
-        response = model.generate_content(prompt)
-        ai_text = response.text
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response_data = response.json()
+        
+        # Extract the model text response safely from the JSON payload
+        ai_text = response_data['candidates'][0]['content']['parts'][0]['text']
+        
         chat_sessions[user_id].append({"role": "model", "parts": [ai_text]})
         return ai_text
     except Exception as e:
@@ -161,3 +173,4 @@ def home():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+
