@@ -2,7 +2,6 @@ from flask import Flask, request
 import requests
 import os
 import time
-import urllib.parse
 
 app = Flask(__name__)
 
@@ -10,13 +9,17 @@ PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 VERIFY_TOKEN = "TUBO2026"
 
-# = ITO PALITAN MO NG DOMAIN MO
-YOUR_WEBSITE = "https://bit.ly/4fdUCot" # = Gawa tayo ng redirect page dito
+# = IMPORTANT: PALITAN MO TO NG TUNAY MONG SHOPEE SHOP LINK +?smtt=0.0.9
+MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9" 
 
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX", "shopee": "https://shopee.ph/Casio-fx-991EX?smtt=0.0.9"},
     "notebook": {"name": "National Notebook 80s", "shopee": "https://shopee.ph/National-Notebook?smtt=0.0.9"},
     "bag": {"name": "JanSport Backpack", "shopee": "https://shopee.ph/JanSport-Bag?smtt=0.0.9"},
+    "pen": {"name": "Pilot G2 0.5 Gel Pen", "shopee": "https://shopee.ph/Pilot-G2-Pen?smtt=0.0.9"},
+    "lamp": {"name": "LED Study Lamp", "shopee": "https://shopee.ph/LED-Study-Lamp?smtt=0.0.9"},
+    "laptop": {"name": "Lenovo Ideapad", "shopee": "https://shopee.ph/Lenovo-Ideapad?smtt=0.0.9"},
+    "phone": {"name": "Tecno", "shopee": "https://shopee.ph/Tecno-Phone?smtt=0.0.9"},
 }
 
 def send_message(sender_id, text):
@@ -29,19 +32,31 @@ def send_typing(sender_id, action="typing_on"):
     payload = {"recipient": {"id": sender_id}, "sender_action": action}
     requests.post(url, json=payload)
 
-def get_safe_shopee_link(query):
-    # = HINDI NA DIRECT SA SHOPEE. SA WEBSITE MO MUNA
-    search_query = urllib.parse.quote_plus(query)
-    return f"{YOUR_WEBSITE}/go?item={search_query}"
-
 def check_product(user_message):
-    user_message_lower = user_message.lower()
-    found_products = []
+    user_message_lower = user_message.lower().strip()
     
+    # = BUG FIX 1: GREETING HANDLER
+    greetings = ["hi", "hello", "hey", "kamusta", "kumusta", "good morning", "good afternoon", "good evening"]
+    if user_message_lower in greetings:
+        if any(word in user_message_lower for word in ["hi", "hello", "hey", "good"]):
+            return "👋 Hi! Welcome to StudyBuddy PH 🤖\nWhat are you looking for today? Calculator, notebook, bag?"
+        else:
+            return "👋 Kumusta! Welcome sa StudyBuddy PH 🤖\nAnong hinahanap mo today? Calculator, notebook, bag?"
+
+    # = BUG FIX 2: WALANG KWENTANG WORDS
+    useless = ["ok", "sige", "yes", "no", "thanks", "thank you", "salamat"]
+    if user_message_lower in useless:
+        if user_message_lower in ["thanks", "thank you", "salamat"]:
+            return "You're welcome! 😊 Need anything else?"
+        else:
+            return "Sige 😊 Ano pa need mo? Sabihin mo lang product name."
+
+    found_products = []
     for product, p in PRODUCT_MAP.items():
         if product in user_message_lower:
             found_products.append(p)
     
+    # = KUNG MAY NAKITA SA PRODUCT_MAP
     if found_products:
         reply = ""
         for p in found_products:
@@ -51,12 +66,12 @@ def check_product(user_message):
                 reply += f"💡 Eto ma-recommend ko: \n{p['name']}\nShop here: {p['shopee']}\n\n"
         return reply.strip()
     
+    # = BUG FIX 3: KUNG WALA, DIRECT SA STORE MO NALANG
     else:
-        safe_link = get_safe_shopee_link(user_message)
         if any(word in user_message_lower for word in ["what", "how", "where", "can", "is", "do", "help"]):
-            return f"🔍 I couldn't find that exact item. \nBut you can browse it here safely:\n{ safe_link }"
+            return f"🔍 I couldn't find '{user_message}'. \nBut you can check all my products here:\n🛒 {MAIN_SHOPEE_STORE}"
         else:
-            return f"🔍 Hindi ko nahanap yung exact na item. \nPero pwede mo icheck dito ng safe:\n{ safe_link }"
+            return f"🔍 Hindi ko nahanap yung '{user_message}'. \nPero pwede mo icheck lahat ng products ko dito:\n🛒 {MAIN_SHOPEE_STORE}"
 
 def ask_groq(user_message):
     language = "Tagalog"
@@ -66,6 +81,7 @@ def ask_groq(user_message):
 
         prompt = f"""You are Study Buddy AI. A friendly AI assistant for students in the Philippines selling school supplies.
         RULE: Reply in {language}. Be helpful, short, friendly, and use emojis. Max 2 sentences.
+        If they ask for a product not in the list, tell them to check the Shopee store link.
         Customer question: {user_message}
         """
 
@@ -115,13 +131,7 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy Bot v4.0 Anti-Ban", 200
-
-@app.route('/go', methods=['GET']) # = DAGDAG TO PARA SA REDIRECT
-def go():
-    item = request.args.get('item', '')
-    shopee_url = f"https://shopee.ph/search?keyword={urllib.parse.quote_plus(item)}"
-    return f'<script>window.location.href="{shopee_url}";</script>', 200
+    return "StudyBuddy Bot v5.0 Bug Free + Direct Store", 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
