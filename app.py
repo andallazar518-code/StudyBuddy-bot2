@@ -45,6 +45,28 @@ def webhook():
                     sender_id = event['sender']['id']
                     if 'message' in event and 'text' in event['message']:
                         user_message = event['message']['text']
+                        print(f"Received: {user_message}") # = para makita sa logs
+                        
+                        product_reply = check_product(user_message)
+                        
+                        if product_reply:
+                            reply = f"Naghahanap ka ba nito? \n{product_reply}"
+                        elif "hi" in user_message.lower() or "hello" in user_message.lower():
+                            reply = "Uy! Ako si Study Buddy AI 🤖\nNaubos muna AI ko for today 😅\nPero pwede kita tulungan maghanap ng gamit. Type: calculator, bag, laptop"
+                        else:
+                            reply = "Boss naubos muna AI credits ko today 😅\nPero sabihin mo lang kung anong gamit need mo, bibigyan kita Shopee link"
+                        
+                        send_message(sender_id, reply) # = ITO YUNG KULANG BOSS
+        return "ok", 200
+
+    if request.method == 'POST':
+        data = request.get_json()
+        if data.get('object') == 'page':
+            for entry in data.get('entry', []):
+                for event in entry.get('messaging', []):
+                    sender_id = event['sender']['id']
+                    if 'message' in event and 'text' in event['message']:
+                        user_message = event['message']['text']
                         
                         product_reply = check_product(user_message)
                         
