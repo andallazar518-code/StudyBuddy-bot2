@@ -1,23 +1,20 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request
 import google.generativeai as genai
 import requests
 import os
 import time
-import threading
 import random
-import queue
-from collections import defaultdict, deque
 
 app = Flask(__name__)
 
 # = SET MO TO SA RENDER ENV VARS
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
-VERIFY_TOKEN = "TUBO2026" # DAPAT ITO DIN SA META MO
+VERIFY_TOKEN = "TUBO2026"
 
-GENERIC_LINK_SHOPEE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9" # = PALITAN MO TO NG SHOP LINK MO
+GENERIC_LINK_SHOPEE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 
-# = 20 ITEMS = SHOPEE ONLY NA = WALANG LAZADA
+# = 20 ITEMS = SHOPEE ONLY
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX", "shopee": "https://s.shopee.ph/903Zywb2BV"},
     "notebook": {"name": "National Notebook 80s", "shopee": "https://s.shopee.ph/BSBSox6US"},
@@ -42,62 +39,53 @@ PRODUCT_MAP = {
 }
 
 genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash')
+model = genai.GenerativeModel('gemini-1.5-flash-latest') # = PINAYAT NA MODEL
 
-MAX_TURNS = 6
-chat_sessions = defaultdict(lambda: deque(maxlen=MAX_TURNS))
-RATE_LIMIT = defaultdict(list)
-LINK_SENT = defaultdict(bool)
-LINK_REQUEST_COUNT = defaultdict(int)
+chat_sessions = {} # = pinasimple
+rate_limit = {}
+link_sent = {}
+link_request_count = {}
 
-# = QUEUE SYSTEM = ANTI-BAN KAY META
-SEND_QUEUE = queue.Queue()
-def send_worker():
-    while True:
-        sender_id, text = SEND_QUEUE.get()
-        url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-        payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
-        try:
-            requests.post(url, json=payload, timeout=5)
-        except Exception as e:
-            print(f"Error sending: {e}")
-        time.sleep(0.3) # = 3 msgs/sec
-threading.Thread(target=send_worker, daemon=True).start()
-
-# = RANDOM BANKS
 GREETINGS = [
     "Uy! Ako si Study Buddy AI 🤖\n\nType ka lang ng question mo. Math, Science, English = Kaya ko yan.",
-    "Yo! Kamusta? 🤓\nAno pag-aaralan natin today? Math, English, Science = Send lang.",
-    "Hello! Tutor mo to 😊\n\nNeed help? Type mo lang: '2x + 4 = 10' or 'Saan bibili ng calculator?'",
+    "Yo! Kamusta? 🤓\nAno pag-aaralan natin today?"
 ]
-ERROR_REPLIES = ["Ay sorry, nag-lag ako saglit 😅 Try mo ulit send.", "Oops may error. Pa-type ulit boss."]
-SOFT_SELL_LINES = ["\nNeed mo ba ng study gamit? Check mo dito: {s}", "\nBaka need mo to: {s}"]
-GENERIC_LINK_LINES = ["Shopee: {s}", "Check mo dito: {s}"]
+ERROR_REPLIES = ["Ay sorry, nag-lag ako saglit 😅 Try mo ulit send."]
+SOFT_SELL_LINES = ["\nNeed mo ba ng study gamit? Check mo dito: {s}"]
 
 def is_rate_limited(user_id, limit=10, window=60):
     now = time.time()
-    RATE_LIMIT[user_id] = [t for t in RATE_LIMIT[user_id] if now - t < window]
-    if len(RATE_LIMIT[user_id]) >= limit: return True
-    RATE_LIMIT[user_id].append(now)
+    if user_id not in rate_limit: rate_limit[user_id] = []
+    rate_limit[user_id] = [t for t in rate_limit[user_id] if now - t < window]
+    if len(rate_limit[user_id]) >= limit: return True
+    rate_limit[user_id].append(now)
     return False
 
-def send_action(sender_id, action):
+def send_message(sender_id, text):
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-    try: requests.post(url, json={"recipient": {"id": sender_id}, "sender_action": action}, timeout=5)
-    except: pass
+    payload = {"recipient": {"id": sender_id}, "message": {"text": text[:2000]}}
+    try:
+        requests.post(url, json=payload, timeout=5)
+        time.sleep(0.5) # = safe kay Meta
+    except Exception as e:
+        print(f"Error sending: {e}")
 
-def send_messenger_message_safe(sender_id, text):
-    SEND_QUEUE.put((sender_id, text[:2000]))
-
-def is_link_ok(text):
-    text = text.lower()
-    return "link" in text or "shopee" in text or "bili" in text or "saan" in text
+def check_product(user_message):
+    user_message = user_message.lower()
+    for product, p in PRODUCT_MAP.items():
+        if product in user_message:
+            return f"\n\n💡 {p['name']}\nShopee: {p['shopee']}"
+    return ""
 
 def get_ai_response(user_id, user_message):
+    if user_id not in chat_sessions: chat_sessions[user_id] = []
     chat_sessions[user_id].append({"role": "user", "parts": [user_message]})
-    history = list(chat_sessions[user_id])
+    chat_sessions[user_id] = chat_sessions[user_id][-6:] # = max 6 turns lang
+
     prompt = "Ikaw si Study Buddy AI. Sumagot ng TAGALOG. Max 4 sentences. Friendly ka.\n\n"
-    for msg in history: prompt += f"{msg['role']}: {msg['parts'][0]}\n"
+    for msg in chat_sessions[user_id]:
+        prompt += f"{msg['role']}: {msg['parts'][0]}\n"
+
     try:
         response = model.generate_content(prompt)
         ai_text = response.text
@@ -107,7 +95,11 @@ def get_ai_response(user_id, user_message):
         print(f"AI Error: {e}")
         return random.choice(ERROR_REPLIES)
 
-# = WEBHOOK = TANK BUILD
+def is_link_ok(text):
+    text = text.lower()
+    return "link" in text or "shopee" in text or "bili" in text or "saan" in text
+
+# = WEBHOOK
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
@@ -123,29 +115,21 @@ def webhook():
                     sender_id = event['sender']['id']
 
                     if is_rate_limited(sender_id):
-                        send_messenger_message_safe(sender_id, "Ang bilis mo boss 😅 Wait 1 min")
+                        send_message(sender_id, "Ang bilis mo boss 😅 Wait 1 min")
                         continue
 
                     if 'message' in event and 'text' in event['message']:
                         user_message = event['message']['text']
-                        send_action(sender_id, "typing_on")
-                        time.sleep(random.uniform(1,2)) # = Human typing
 
-                        # = PRODUCT DETECT = AUTO SHOPEE LINK
-                        product_reply = ""
-                        for product in PRODUCT_MAP:
-                            if product in user_message.lower():
-                                p = PRODUCT_MAP[product]
-                                product_reply = f"\n\n💡 {p['name']}\nShopee: {p['shopee']}"
-                                LINK_SENT[sender_id] = True
-                                break
+                        # = PRODUCT DETECT
+                        product_reply = check_product(user_message)
 
                         # = PAG NAG-REQUEST NG LINK
-                        if is_link_ok(user_message) and not LINK_SENT[sender_id]:
-                            LINK_REQUEST_COUNT[sender_id] += 1
-                            if LINK_REQUEST_COUNT[sender_id] <= 2: # = Max 2x lang
-                                product_reply = random.choice(GENERIC_LINK_LINES).format(s=GENERIC_LINK_SHOPEE)
-                                LINK_SENT[sender_id] = True
+                        if is_link_ok(user_message) and not link_sent.get(sender_id, False):
+                            if link_request_count.get(sender_id, 0) <= 2:
+                                product_reply = f"Shopee: {GENERIC_LINK_SHOPEE}"
+                                link_sent[sender_id] = True
+                                link_request_count[sender_id] = link_request_count.get(sender_id, 0) + 1
 
                         ai_text = get_ai_response(sender_id, user_message)
 
@@ -154,7 +138,7 @@ def webhook():
                             product_reply = random.choice(SOFT_SELL_LINES).format(s=GENERIC_LINK_SHOPEE)
 
                         final_reply = ai_text + product_reply
-                        send_messenger_message_safe(sender_id, final_reply)
+                        send_message(sender_id, final_reply)
         return "ok", 200
 
 @app.route('/', methods=['GET'])
