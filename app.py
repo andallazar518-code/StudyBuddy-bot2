@@ -17,7 +17,7 @@ if not PAGE_ACCESS_TOKEN or not GROQ_API_KEY:
 user_memory = {}
 user_sessions = {}
 
-# = BUONG AFFILIATE SYSTEM
+# = BUONG AFFILIATE SYSTEM - HINDI TINANGGAL
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9"},
@@ -28,15 +28,17 @@ PRODUCT_MAP = {
     "headset": {"name": "Gaming Headset", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9"},
     "bag": {"name": "JanSport Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9"},
     "lamp": {"name": "LED Study Lamp", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9"},
-    "pen": {"name": "Pilot G2 Pen", "shopee": "https://s.shopee.ph/AAFXNKQ3JD?smtt=0.0.9"},
-    "monitor": {"name": "24inch Monitor", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9"},
 }
 
 def send_message(sender_id, text, quick_replies=None):
     text = text[:2000]
-    # Auto code block
-    if "```" not in text and any(kw in text for kw in ["def ", "class ", "import ", "SELECT", "#include", "function"]):
+    # = BUG FIX: AUTO CLOSE CODE BLOCKS
+    if text.count("```") % 2!= 0:
+        text += "\n```"
+    has_code = any(kw in text for kw in ["def ", "class ", "import ", "print(", "self.", "="])
+    if has_code and "```" not in text:
         text = f"```\n{text}\n```"
+
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
@@ -59,28 +61,28 @@ def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
 
     # 1. NAME
-    if "name is" in msg:
-        name = msg.replace("my name is", "").replace("name is", "").strip()
+    if "name is" in msg or "ako si" in msg:
+        name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip()
         user_memory[sender_id] = {'name': name.title()}
-        return f"👋 Welcome {name.title()}! BSIT ULTIMATE MODE ON"
+        return f"👋 Welcome {name.title()}! All-Subject Tutor Mode ON"
 
     # 2. GREETING + BUTTONS
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory.get(sender_id, {}).get('name', 'Boss')
         qr = [
-            {"content_type":"text", "title":"💻 Generate Code", "payload":"gen"},
-            {"content_type":"text", "title":"🐛 Debug Code", "payload":"debug"},
-            {"content_type":"text", "title":"🛒 BSIT Gear", "payload":"gear"}
+            {"content_type":"text", "title":"📚 Study Help", "payload":"study"},
+            {"content_type":"text", "title":"💻 Code Help", "payload":"code"},
+            {"content_type":"text", "title":"🛒 School Gear", "payload":"gear"}
         ]
-        send_message(sender_id, f"**BSIT ULTIMATE v12.0** 🤖\nHi {name}!\n\n**Commands:**\n`gawa mo code ng...`\n`debug this:`\n`explain:`\n`add task:`\n`pomodoro 25`", qr)
+        send_message(sender_id, f"**StudyBuddy PH v13.0** 🤖\nHi {name}!\n\nAsk me anything: Math, Science, English, History, Coding\n**Commands:**\n`explain:` `solve:` `gawa mo code:` `add task:`", qr)
         return "HANDLED"
 
     # 3. AFFILIATE CHECK
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
-            return f"💡 **{p['name']}**\nRecommended for BSIT 👌\n\n**Shop:**\n{p['shopee']}"
+            return f"💡 **{p['name']}**\nRecommended for students 👌\n\n**Shop:**\n{p['shopee']}"
     if any(k in msg for k in ["buy", "shop", "shopee", "gear"]):
-        return f"🛒 **BSIT Gear Store**\nAll your needs here:\n{MAIN_SHOPEE_STORE}"
+        return f"🛒 **School Gear Store**\nAll your needs here:\n{MAIN_SHOPEE_STORE}"
 
     # 4. TODO SYSTEM
     if "add task" in msg:
@@ -98,34 +100,34 @@ def handle_commands(user_message, sender_id):
     if "pomodoro" in msg or "timer" in msg:
         try:
             minutes = int(''.join(filter(str.isdigit, msg)))
-            return f"⏰ Timer set for {minutes} minutes! Focus mode ON. Laban! 💪"
+            return f"⏰ Timer set for {minutes} minutes! Focus mode ON. Kaya mo yan! 💪"
         except: return "⏰ Type `pomodoro 25`"
-
-    # 6. MOOD
-    if any(w in msg for w in ["pagod", "stress", "hirap"]):
-        return random.choice(["Laban lang! 5 min break ☕", "Kaya mo yan! One bug at a time 😊"])
 
     return None
 
-def ask_groq_ultimate(user_message):
-    # ANTI-COPYRIGHT
+def ask_groq_all_subject(user_message):
+    # = ANTI-COPYRIGHT
     if any(word in user_message.lower() for word in ["lyrics", "poem", "book chapter"]):
-        return "Can't share that due to copyright 😅 Pero sa coding 100% kita"
+        return "Can't share that due to copyright 😅 Pero sa studies 100% kita"
 
-    language = "Tagalog" if any(w in user_message.lower().split() for w in ["ng", "ang", "paano"]) else "English"
-    models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"] # Fallback
+    language = "Tagalog" if any(w in user_message.lower().split() for w in ["ng", "ang", "paano", "ano"]) else "English"
+    models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
 
     for model in models:
         try:
-            prompt = f"""You are BSIT ULTIMATE AI. Senior Developer + Teacher.
-            GOAL: Give READY TO USE code. Copy-paste lang.
-            RULES:
-            1. Reply in {language}. Max 5 sentences + code.
-            2. "gawa mo"/"write": Give FULL code in ```lang\ncode\n``` + HOW TO RUN.
-            3. "debug": Show problem then FIXED code in ```.
-            4. "explain": 3 sentences + example code in ```.
-            5. Add comments. Beginner friendly. No errors.
-            Question: {user_message}"""
+            prompt = f"""You are StudyBuddy PH AI. Expert tutor for ALL subjects: Math, Science, English, History, Filipino, BSIT, Coding.
+            GOAL: Be a friendly teacher. Explain simply.
+            CRITICAL RULES:
+            1. Reply in {language}. Max 5 sentences. Use 1 emoji max.
+            2. If MATH/SCIENCE: Show step by step solution.
+            3. If CODING: Give FULL working code in ```language\ncode\n```. NEVER break f-strings. ALWAYS close ```.
+            4. If ESSAY/ENGLISH/HISTORY: Give summary + key points.
+            5. If "explain": Simple + 1 example.
+            6. Never give lyrics, poems, or book passages.
+            7. End with 1 question to help student learn more.
+
+            Student: {user_message}
+            Answer:"""
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
             data = {"model": model, "messages": [{"role": "user", "content": prompt}]}
@@ -148,7 +150,7 @@ def webhook():
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
                     sender_id = event['sender']['id']
-                    # ANTI-SPAM
+                    # = ANTI-SPAM
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1:
                         continue
                     user_sessions[sender_id] = time.time()
@@ -162,15 +164,15 @@ def webhook():
                             if cmd_reply == "HANDLED": pass
                             elif cmd_reply: send_message(sender_id, cmd_reply)
                             else:
-                                ai_reply = ask_groq_ultimate(user_message)
+                                ai_reply = ask_groq_all_subject(user_message)
                                 send_message(sender_id, ai_reply)
                         except Exception as e:
                             print("MAIN ERROR:", e)
-                            send_message(sender_id, "Ay sorry error 😅")
+                            send_message(sender_id, "Ay sorry error 😅 Try mo ulit")
                         finally:
                             send_typing(sender_id, "typing_off")
         return "ok", 200
 
 @app.route('/', methods=['GET'])
 def home():
-    return "BSIT ULTIMATE v12.0 ONLINE", 200
+    return "StudyBuddy PH v13.0 ALL SUBJECT", 200
