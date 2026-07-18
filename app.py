@@ -14,7 +14,7 @@ user_memory = {}
 user_sessions = {}
 user_chat_count = {}
 user_rejected_affiliate = {}
-user_reject_time = {} # BAGO: Para ma-track kung kailan nag "no"
+user_reject_time = {}
 user_auto_sent = {}
 
 # = AFFILIATE - SHOPEE ONLY =
@@ -82,7 +82,6 @@ def get_affiliate_reply(msg):
             ]
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link. Helps support StudyBuddy*"
             return {"text": text, "quick_replies": qr}
-
     if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         text = f"🛒 **Student Essentials Store**\n\nI curated the best school supplies with vouchers here:\n\n{MAIN_SHOPEE_STORE}\n\nTip: Check vouchers daily to save more!\n\n*Disclosure: Affiliate link*"
@@ -93,7 +92,15 @@ def handle_commands(user_message, sender_id):
     cleanup_memory()
     msg = user_message.lower().strip()
 
-    # BAGO: AUTO RESET AFTER 24 HOURS = 86400 seconds
+    # = BAGO: FIX FOR BUTTON CLICKS =
+    # Pag nag click ng button minsan may "@Meta AI" or emojis
+    if "view deals" in msg or "open store" in msg or "show deals" in msg:
+        msg = "shop"
+    if "no thanks" in msg:
+        msg = "no"
+    # = END FIX =
+
+    # AUTO RESET AFTER 24 HOURS
     if sender_id in user_reject_time:
         if time.time() - user_reject_time[sender_id] > 86400:
             user_rejected_affiliate[sender_id] = False
@@ -108,12 +115,11 @@ def handle_commands(user_message, sender_id):
         product = msg.replace("shopee_", "")
         if product in PRODUCT_MAP:
             p = PRODUCT_MAP[product]
-            return f"👉 **{p['name']}**\n\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
+            return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    # PAG NAG NO - SAVE YUNG ORAS
     if any(w in msg for w in ["no", "no need", "don't need", "hindi", "ayaw"]):
         user_rejected_affiliate[sender_id] = True
-        user_reject_time[sender_id] = time.time() # SAVE TIME
+        user_reject_time[sender_id] = time.time()
         return "Got it! 😊 No worries. I'll ask again tomorrow if you need help with school supplies."
 
     if "name is" in msg or "ako si" in msg:
@@ -124,7 +130,7 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory.get(sender_id, {}).get('name', 'Boss')
-        return f"**StudyBuddy v14.12** 🤖\nHi {name}!\n\nAsk me anything 😊"
+        return f"**StudyBuddy v14.13** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
     # AUTO SEND EVERY 5 MESSAGES
     if user_chat_count[sender_id] % 5 == 0 and not user_rejected_affiliate.get(sender_id, False) and not user_auto_sent.get(sender_id, False):
@@ -160,7 +166,7 @@ def ask_groq(user_message):
     models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
     for model in models:
         try:
-            prompt = f"""You are StudyBuddy PH v14.12. A friendly and helpful AI Assistant.
+            prompt = f"""You are StudyBuddy PH v14.13. A friendly and helpful AI Assistant.
 Reply in {language}. Be helpful, kind, and conversational.
 Only mention Shopee if the user specifically asks about buying, price, or school products.
 Answer EVERY question.
@@ -217,4 +223,8 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.12 FULL", 200
+    return "StudyBuddy v14.13 FULL", 200
+
+@app.route('/ping', methods=['GET'])
+def ping():
+    return "Bot is awake", 200
