@@ -18,7 +18,7 @@ user_reject_time = {}
 user_auto_sent = {}
 
 # = AFFILIATE - SHOPEE ONLY =
-MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
+MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9" # PALITAN MO NG SARILI MONG LINK
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "Struggling with complex math? 📐", "benefit": "Approved for board exams. 552 functions. Student favorite"},
     "notebook": {"name": "National Notebook 80 Leaves", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "Ink keeps bleeding through? 📓", "benefit": "Thick 70gsm paper. Perfect for notes and reviewers"},
@@ -92,7 +92,7 @@ def handle_commands(user_message, sender_id):
     cleanup_memory()
     msg = user_message.lower().strip()
 
-    # = FIX 1: BETTER BUTTON DETECTION =
+    # = FIX: BETTER BUTTON DETECTION =
     if "view deals" in msg or "open store" in msg or "show deals" in msg or "see all deals" in msg:
         msg = "shop"
     if "no thanks" in msg or "no" == msg:
@@ -108,7 +108,7 @@ def handle_commands(user_message, sender_id):
     if sender_id not in user_chat_count:
         user_chat_count[sender_id] = 0
     user_chat_count[sender_id] += 1
-    user_auto_sent[sender_id] = False # FIX 2: RESET AUTO SENT EVERY NEW MESSAGE
+    user_auto_sent[sender_id] = False # RESET EVERY NEW MESSAGE
 
     if msg.startswith("shopee_"):
         product = msg.replace("shopee_", "")
@@ -119,7 +119,7 @@ def handle_commands(user_message, sender_id):
     if any(w in msg for w in ["no", "no need", "don't need", "hindi", "ayaw"]):
         user_rejected_affiliate[sender_id] = True
         user_reject_time[sender_id] = time.time()
-        return "Got it! 😊 No worries. I'll ask again tomorrow if you need help with school supplies."
+        return "Got it! 😊 No worries. I'll ask again tomorrow if you need help with school supplies. If you want to help this bot visit this link https://bit.ly/ryzoxau"
 
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip()
@@ -129,17 +129,13 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory.get(sender_id, {}).get('name', 'Boss')
-        return f"**StudyBuddy v14.14** 🤖\nHi {name}!\n\nAsk me anything 😊"
+        return f"**StudyBuddy v14.15** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
-    # AUTO SEND EVERY 5 MESSAGES
-    if user_chat_count[sender_id] % 5 == 0 and not user_rejected_affiliate.get(sender_id, False) and not user_auto_sent.get(sender_id, False):
+    # = BAGONG RULE: EVERY 8 MESSAGES LANG =
+    if user_chat_count[sender_id] % 8 == 0 and not user_rejected_affiliate.get(sender_id, False) and not user_auto_sent.get(sender_id, False):
         user_auto_sent[sender_id] = True
         qr = [{"content_type":"text", "title":"🛒 View Deals", "payload":"shop"}, {"content_type":"text", "title":"No thanks", "payload":"no"}]
         return {"text": f"Quick tip {user_memory.get(sender_id, {}).get('name', 'Boss')} 😊\n\nIf you need school supplies, I have a curated Shopee list with student vouchers.\n\nWant to see?", "quick_replies": qr}
-
-    if user_chat_count[sender_id] == 3 and not user_rejected_affiliate.get(sender_id, False):
-        qr = [{"content_type":"text", "title":"🛒 Show Deals", "payload":"shop"}]
-        return {"text": f"By the way {user_memory.get(sender_id, {}).get('name', 'Boss')} 😊\n\nNeed school supplies? I have a curated list with vouchers.\n\nNo pressure! Just tap below if you want to see.", "quick_replies": qr}
 
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
@@ -165,8 +161,8 @@ def ask_groq(user_message):
     models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
     for model in models:
         try:
-            prompt = f"""You are StudyBuddy PH v14.14. A friendly and helpful AI Assistant.
-Reply in {language}. Be helpful, kind, and conversational. Max 6 sentences.
+            prompt = f"""You are StudyBuddy PH v14.15. A friendly and helpful AI Assistant.
+Reply in {language}. Be helpful, kind, and conversational. Max 10 sentences.
 Only mention Shopee if the user specifically asks about buying, price, or school products.
 Answer EVERY question.
 User: {user_message}"""
@@ -222,7 +218,7 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.14 FULL", 200
+    return "StudyBuddy v14.15 FULL", 200
 
 @app.route('/ping', methods=['GET'])
 def ping():
