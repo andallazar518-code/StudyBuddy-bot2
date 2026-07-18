@@ -12,18 +12,20 @@ VERIFY_TOKEN = "TUBO2026"
 
 user_memory = {}
 user_sessions = {}
+user_chat_count = {}
 
-# = 1. AFFILIATE - MAS APPEALING NA =
+# = AFFILIATE - MAS APPEALING PERO SAFE =
+# IMPORTANT: Palitan mo ng sarili mong Shopee Affiliate Link
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 PRODUCT_MAP = {
-    "calculator": {"name": "Casio fx-991EX Scientific", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "Perfect for STEM students 📐"},
-    "notebook": {"name": "National Notebook 80s", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "Best for notes and reviewers 📓"},
-    "laptop": {"name": "Lenovo Ideapad Laptop", "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9", "hook": "For school, work, and gaming 💻"},
-    "mouse": {"name": "Wireless Mouse", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Smooth and ergonomic 🖱️"},
-    "keyboard": {"name": "Mechanical Keyboard RGB", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Level up your typing and gaming ⌨️"},
-    "headset": {"name": "Gaming Headset with Mic", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Clear sound for class and games 🎧"},
-    "bag": {"name": "JanSport Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9", "hook": "Durable for daily school use 🎒"},
-    "lamp": {"name": "LED Study Lamp", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Protect your eyes while studying 💡"},
+    "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "🔥 Student Best Seller. Approved for board exams 📐"},
+    "notebook": {"name": "National Notebook 80 Leaves", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "📓 Thick paper. No ink bleed - perfect for notes"},
+    "laptop": {"name": "Lenovo Ideapad 3 Laptop", "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9", "hook": "💻 Budget-friendly for school & work. Free shipping voucher"},
+    "mouse": {"name": "Wireless Silent Mouse", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "🖱️ Ergonomic + Long battery life. 1 Year warranty"},
+    "keyboard": {"name": "RGB Mechanical Keyboard", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "⌨️ Blue switches. Great for typing & gaming"},
+    "headset": {"name": "Gaming Headset with Noise Cancelling Mic", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "🎧 Clear audio for online class & meetings"},
+    "bag": {"name": "JanSport SuperBreak Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9", "hook": "🎒 Water resistant. Lifetime warranty included"},
+    "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "💡 3 Light modes. Protects eyes while studying"},
 }
 
 def send_message(sender_id, text):
@@ -32,8 +34,8 @@ def send_message(sender_id, text):
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     try:
         requests.post(url, json=payload, timeout=10)
-    except:
-        print("Send error")
+    except Exception as e:
+        print("Send error:", e)
 
 def send_typing(sender_id, action="typing_on"):
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
@@ -49,17 +51,49 @@ def cleanup_memory():
         del user_memory[oldest]
 
 def detect_language(text):
+    text_lower = text.lower()
     bisaya = ["unsa", "ngano", "asa"]
     tagalog = ["ng", "ang", "paano", "ano"]
-    if any(w in text.lower().split() for w in bisaya):
+    if any(w in text_lower.split() for w in bisaya):
         return "Bisaya"
-    if any(w in text.lower().split() for w in tagalog):
+    if any(w in text_lower.split() for w in tagalog):
         return "Tagalog"
     return "English"
+
+def check_affiliate_intent(msg):
+    msg = msg.lower()
+    # SAFE TRIGGERS - HINDI SPAMMY
+    buy_words = ["buy", "shop", "shopee", "price", "link", "where to buy", "gear", "order", "store", "need", "gusto", "hanap"]
+    product_words = list(PRODUCT_MAP.keys())
+    study_words = ["school", "study", "exam", "review", "assignment", "supplies"]
+
+    has_product = any(w in msg for w in product_words)
+    has_buy_intent = any(w in msg for w in buy_words)
+    has_study = any(w in msg for w in study_words)
+
+    return has_product or has_buy_intent or has_study
+
+def get_affiliate_reply(msg):
+    msg = msg.lower()
+    # PRODUCT SPECIFIC - MAS APPEALING COPY
+    for product, p in PRODUCT_MAP.items():
+        if re.search(r'\b' + re.escape(product) + r'\b', msg):
+            return f"💡 **I recommend: {p['name']}**\n\n{p['hook']}\n\n👉 **Check price & reviews:**\n{p['shopee']}\n\n*Disclosure: This is an affiliate link. It helps support StudyBuddy at no extra cost to you.*"
+
+    # GENERAL STORE - SOFT SELL
+    if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store", "school", "study", "need", "supplies"]):
+        return f"🛒 **Need school supplies?**\n\nI put together my list of trusted student essentials here:\n\n{MAIN_SHOPEE_STORE}\n\n👆 Check for vouchers & free shipping\n*Disclosure: Affiliate link to support this bot*"
+
+    return None
 
 def handle_commands(user_message, sender_id):
     cleanup_memory()
     msg = user_message.lower().strip()
+
+    # TRACK CHAT COUNT
+    if sender_id not in user_chat_count:
+        user_chat_count[sender_id] = 0
+    user_chat_count[sender_id] += 1
 
     # 1. NAME
     if "name is" in msg or "ako si" in msg:
@@ -71,28 +105,32 @@ def handle_commands(user_message, sender_id):
     # 2. GREETING
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory.get(sender_id, {}).get('name', 'Boss')
-        send_message(sender_id, f"**StudyBuddy v14.4** 🤖\nHi {name}!\n\nAsk me anything. I'm here to help 😊")
-        return "HANDLED"
+        return f"**StudyBuddy v14.7** 🤖\nHi {name}!\n\nAsk me anything. I can also help you find school deals 😊"
 
-    # 3. AFFILIATE - MAS APPEALING
-    for product, p in PRODUCT_MAP.items():
-        if re.search(r'\b' + re.escape(product) + r'\b', msg):
-            return f"💡 **I recommend: {p['name']}**\n\n{p['hook']}\n\n🔥 **Check it here:**\n{p['shopee']}\n\n*Affiliate link - helps support this bot*"
+    # 3. SOFT AUTO-SUGGEST AFTER 3 MESSAGES - SAFE VERSION
+    if user_chat_count[sender_id] == 3:
+        return f"By the way {user_memory.get(sender_id, {}).get('name', 'Boss')} 😊\n\nIf you ever need school supplies or gadgets, just type `shop` and I'll send you my curated Shopee list with vouchers.\n\nNo pressure though! I'm also here to help with studies 💪"
 
-    if any(k in msg for k in ["buy", "shop", "shopee", "gear", "recommend", "link"]):
-        return f"🛒 **My Top Pick Store for Students**\n\nEverything you need for school in 1 place 👇\n\n{MAIN_SHOPEE_STORE}\n\n*Affiliate link - thanks for supporting!*"
+    # 4. MANUAL SHOP TRIGGER
+    if msg == "shop":
+        return f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\nTip: Check vouchers daily for extra discounts!\n\n*Disclosure: Affiliate link*"
 
-    # 4. MOOD
+    # 5. AFFILIATE
+    if check_affiliate_intent(msg):
+        affiliate_reply = get_affiliate_reply(msg)
+        if affiliate_reply:
+            return affiliate_reply
+
+    # 6. MOOD
     if any(w in msg for w in ["pagod", "stress", "hirap", "sad"]):
         return random.choice([
             "Laban lang! Take a 5 min break ☕ You got this!",
-            "Kaya mo yan! One step at a time 😊 I'm here for you",
-            "Rest muna if needed. Then balik tayo 💪"
+            "Kaya mo yan! One step at a time 😊 I'm here for you"
         ])
 
     return None
 
-def ask_groq(user_message): # PURE AI
+def ask_groq(user_message):
     if any(word in user_message.lower() for word in ["lyrics", "poem"]):
         return "Can't share that due to copyright 😅 Pero ask me anything else!"
 
@@ -100,9 +138,10 @@ def ask_groq(user_message): # PURE AI
     models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
     for model in models:
         try:
-            prompt = f"""You are StudyBuddy PH v14.4. A friendly and smart AI Assistant.
-Reply in {language}. Be helpful, kind, and conversational. Max 6 sentences.
-Answer EVERY question the user asks.
+            prompt = f"""You are StudyBuddy PH v14.7. A friendly and helpful AI Assistant.
+Reply in {language}. Be helpful, kind, and conversational.
+If the user asks about school, studying, or products, you can casually mention that deals are often available on Shopee.
+Answer EVERY question.
 User: {user_message}"""
             url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -112,7 +151,7 @@ User: {user_message}"""
                 return r.json()['choices'][0]['message']['content']
         except:
             continue
-    return "AI busy 😅"
+    return "AI busy 😅 Try again"
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -134,7 +173,6 @@ def webhook():
                     send_typing(sender_id, "typing_on")
                     time.sleep(0.3)
                     try:
-                        # BLOCK ATTACHMENTS
                         if 'message' in event and 'attachments' in event['message']:
                             send_message(sender_id, "I can only reply to text messages for now 😅")
                             continue
@@ -158,4 +196,4 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.4 FULL", 200
+    return "StudyBuddy v14.7 FULL", 200
