@@ -7,14 +7,8 @@ import re
 
 app = Flask(__name__)
 
-# Fetch and automatically clean the tokens to prevent URL parsing errors
-PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN", "").strip().replace('"', '').replace("'", "")
-# If facebook.com accidentally got pasted into the environment variable, extract just the token
-if "facebook.com" in PAGE_ACCESS_TOKEN.lower():
-    match = re.search(r'(EAAB[A-Za-z0-9]+)', PAGE_ACCESS_TOKEN)
-    if match: PAGE_ACCESS_TOKEN = match.group(1)
-
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip().replace('"', '').replace("'", "")
+PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 VERIFY_TOKEN = "TUBO2026"
 
 user_memory = {}
@@ -34,35 +28,26 @@ PRODUCT_MAP = {
 }
 
 def send_message(sender_id, text, quick_replies=None):
-    if not text or not PAGE_ACCESS_TOKEN: return
     text = text[:2000]
-    # = AUTO CLOSE CODE
+    # = BUG FIX 1: AUTO CLOSE CODE
     if text.count("```") % 2!= 0: text += "\n```"
     has_code = any(kw in text for kw in ["def ", "class ", "import ", "print(", "self.", "="])
     if has_code and "```" not in text: text = f"```\n{text}\n```"
-    
-    url = "https://facebook.com"
-    params = {"access_token": PAGE_ACCESS_TOKEN}
+    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
-    try: 
-        r = requests.post(url, params=params, json=payload, timeout=10)
-        if r.status_code != 200:
-            print(f"Facebook API Rejected Reply: {r.status_code} - {r.text}")
-    except Exception as e: 
-        print(f"Send network error: {e}")
+    try: requests.post(url, json=payload, timeout=10)
+    except: print("Send error")
 
 def send_typing(sender_id, action="typing_on"):
-    if not PAGE_ACCESS_TOKEN: return
-    url = "https://facebook.com"
-    params = {"access_token": PAGE_ACCESS_TOKEN}
+    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "sender_action": action}
-    try: requests.post(url, params=params, json=payload, timeout=5)
+    try: requests.post(url, json=payload, timeout=5)
     except: pass
 
 def cleanup_memory():
     if len(user_memory) > 50:
-        oldest = list(user_memory.keys())
+        oldest = list(user_memory.keys())[0]
         del user_memory[oldest]
 
 def detect_language(text):
@@ -81,6 +66,8 @@ def handle_commands(user_message, sender_id):
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip()
         user_memory[sender_id]['name'] = name.title()
+        if 'notes' not in user_memory[sender_id]: user_memory[sender_id]['notes'] = []
+        if 'tasks' not in user_memory[sender_id]: user_memory[sender_id]['tasks'] = []
         return f"👋 Welcome {name.title()}! GOD MODE ON"
 
     # 3. GREETING
@@ -89,11 +76,10 @@ def handle_commands(user_message, sender_id):
         qr = [
             {"content_type":"text", "title":"🚀 Ask AI", "payload":"ask_ai"},
             {"content_type":"text", "title":"💻 Code", "payload":"code"},
-            {"content_type":"text", "title":"📸 Vision", "payload":"vision"},
+            {"content_type":"text", "title":"📸 Image", "payload":"img"},
             {"content_type":"text", "title":"🛒 Gear", "payload":"gear"}
         ]
-        # FIX: Removed the invalid escape sequences and cleaned up formatting
-        send_message(sender_id, f"**Assistant Pro v14.1** 🤖\nHi {name}!\n\nSend: Text, Image, PDF, Voice\nCommands: `quiz me`, `save note:`, `add task:`", qr)
+        send_message(sender_id, f"**Assistant Pro v14.1** 🤖\(\nHi {name}!\\)n\nSend any question, command, task, or image!", qr)
         return "HANDLED"
 
     # 4. AFFILIATE - BUO PA RIN
@@ -109,7 +95,7 @@ def handle_commands(user_message, sender_id):
         user_memory[sender_id]['tasks'].append(task)
         return f"✅ Task Added: `{task}`"
     if "my tasks" in msg:
-        tasks = user_memory[sender_id]['tasks'] if sender_id in user_memory else []
+        tasks = user_memory.get(sender_id, {}).get('tasks', [])
         if not tasks: return "Wala ka pang tasks 📝"
         return "📝 **Your Tasks:**\n" + "\n".join([f"{i+1}. `{t}`" for i,t in enumerate(tasks)])
 
@@ -119,7 +105,7 @@ def handle_commands(user_message, sender_id):
         user_memory[sender_id]['notes'].append(note)
         return f"✅ Note Saved: `{note}`"
     if "my notes" in msg:
-        notes = user_memory[sender_id]['notes'] if sender_id in user_memory else []
+        notes = user_memory.get(sender_id, {}).get('notes', [])
         if not notes: return "Wala ka pang notes 📝"
         return "📝 **Your Notes:**\n" + "\n".join([f"{i+1}. `{n}`" for i,n in enumerate(notes)])
 
@@ -142,24 +128,22 @@ def handle_commands(user_message, sender_id):
     return None
 
 def ask_groq_text(user_message):
-    if not GROQ_API_KEY: return "Groq API Key configuration missing 😅"
     if any(word in user_message.lower() for word in ["lyrics", "poem"]):
         return "Can't share that due to copyright 😅"
     language = detect_language(user_message)
     models = ["llama-3.3-70b-versatile", "llama3-8b-8192"]
     for model in models:
         try:
-            prompt = f"You are an advanced, versatile AI Assistant. Answer all questions directly and intelligently. Reply in {language}. Enclose code within ```."
+            prompt = f"You are an advanced, versatile AI Assistant. Answer all questions directly, intelligently, and completely. Reply in {language}. Enclose code within ```.\n\nUser: {user_message}"
             url = "https://groq.com"
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-            data = {"model": model, "messages": [{"role": "user", "content": prompt + f"\n\nUser: {user_message}"}]}
+            data = {"model": model, "messages": [{"role": "user", "content": prompt}]}
             r = requests.post(url, headers=headers, json=data, timeout=20)
-            return r.json()['choices'][0]['message']['content']
+            return r.json()['choices']['message']['content']
         except: continue
     return "AI busy 😅"
 
 def ask_groq_vision(image_url, caption):
-    if not GROQ_API_KEY: return "Groq API Key configuration missing 😅"
     language = detect_language(caption)
     try:
         prompt = f"You are an advanced AI Assistant with vision. Analyze this image thoroughly and fulfill this prompt completely: {caption or 'Analyze image'}. Reply in {language}."
@@ -167,7 +151,7 @@ def ask_groq_vision(image_url, caption):
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.2-11b-vision-preview", "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": image_url}}]}]}
         r = requests.post(url, headers=headers, json=data, timeout=30)
-        return r.json()['choices'][0]['message']['content']
+        return r.json()['choices']['message']['content']
     except: return "Can't read image 😅"
 
 @app.route('/webhook', methods=['GET', 'POST'])
@@ -182,15 +166,13 @@ def webhook():
         if data and data.get('object') == 'page':
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
-                    sender_id = event.get('sender', {}).get('id')
-                    if not sender_id: continue
+                    sender_id = event['sender']['id']
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2:
                         continue
                     
                     user_sessions[sender_id] = time.time()
                     send_typing(sender_id, "typing_on")
 
-                    # Handle Images
                     if 'message' in event and 'attachments' in event['message']:
                         for attach in event['message']['attachments']:
                             if attach.get('type') == 'image':
@@ -199,9 +181,17 @@ def webhook():
                         send_typing(sender_id, "typing_off")
                         continue
 
-                    # Handle Text
                     if 'message' in event and 'text' in event['message']:
                         user_text = event['message']['text']
                         command_reply = handle_commands(user_text, sender_id)
                         
                         if command_reply == "HANDLED":
+                            send_typing(sender_id, "typing_off")
+                            continue
+                        elif command_reply:
+                            send_message(sender_id, command_reply)
+                        else:
+                            send_message(sender_id, ask_groq_text(user_text))
+
+                    send_typing(sender_id, "typing_off")
+        return "EVENT_RECEIVED", 200
