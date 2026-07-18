@@ -39,7 +39,8 @@ def send_message(sender_id, text, quick_replies=None):
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
     try: 
-        requests.post(url, json=payload, timeout=10)
+        r = requests.post(url, json=payload, timeout=10)
+        print(f"FB Send Status: {r.status_code}")
     except Exception as e: 
         print(f"FB Send Message Error: {e}")
 
@@ -53,7 +54,7 @@ def send_typing(sender_id, action="typing_on"):
 
 def cleanup_memory():
     if len(user_memory) > 200:
-        oldest = list(user_memory.keys())[0]
+        oldest = list(user_memory.keys())
         del user_memory[oldest]
 
 def detect_language(text):
@@ -144,12 +145,13 @@ def ask_groq_text(user_message):
         return "Can't share that due to copyright restrictions 😅"
         
     language = detect_language(user_message)
-    models = ["llama3-70b-8192", "llama3-8b-8192"]
+    # Updated to the absolute newest stable model string
+    models = ["llama-3.3-70b-versatile"]
     
     for model in models:
         try:
             prompt = f"You are an advanced, multi-purpose AI Assistant. Answer all questions or requests directly, comprehensively, and intelligently. Reply in {language}. Enclose all code within ```."
-            url = "https://api.groq.com/openai/v1/chat/completions"
+            url = "https://groq.com"
             headers = {
                 "Authorization": f"Bearer {GROQ_API_KEY or ''}", 
                 "Content-Type": "application/json"
@@ -176,7 +178,7 @@ def ask_groq_vision(image_url, caption):
     language = detect_language(caption if caption else "")
     try:
         prompt = f"You are an advanced AI Assistant with computer vision. Analyze this image thoroughly and fulfill this prompt completely: {caption or 'Analyze image'}. Reply in {language}."
-        url = "https://api.groq.com/openai/v1/chat/completions"
+        url = "https://groq.com"
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}", 
             "Content-Type": "application/json"
@@ -197,7 +199,7 @@ def ask_groq_vision(image_url, caption):
             return res_json['choices'][0]['message']['content']
     except Exception as e: 
         print(f"Groq Vision Error: {e}")
-    return "Could not process the image layout successfully 😅"
+    return "Could not process the image successfully 😅"
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -229,5 +231,3 @@ def webhook():
                                     img_url = attach.get('payload', {}).get('url')
                                     caption = event['message'].get('text', '')
                                     if img_url:
-                                        reply = ask_groq_vision(img_url, caption)
-
