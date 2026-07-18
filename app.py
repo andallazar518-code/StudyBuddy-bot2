@@ -36,8 +36,13 @@ def send_message(sender_id, text, quick_replies=None):
     url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
-    try: requests.post(url, json=payload, timeout=10)
-    except: print("Send error")
+    try: 
+        r = requests.post(url, json=payload, timeout=10)
+        # Detailed logging to find out exactly why Facebook didn't send the reply
+        if r.status_code != 200:
+            print(f"FB Error Code {r.status_code}: {r.text}")
+    except Exception as e: 
+        print(f"Send network error: {e}")
 
 def send_typing(sender_id, action="typing_on"):
     url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
@@ -59,7 +64,6 @@ def detect_language(text):
 
 def handle_commands(user_message, sender_id):
     cleanup_memory()
-    # Guard against sudden crashes if tasks/notes are fired before establishing a name layout
     if sender_id not in user_memory: user_memory[sender_id] = {'name': 'Boss', 'notes': [], 'tasks': []}
     msg = user_message.lower().strip()
 
@@ -94,7 +98,7 @@ def handle_commands(user_message, sender_id):
         user_memory[sender_id]['tasks'].append(task)
         return f"✅ Task Added: `{task}`"
     if "my tasks" in msg:
-        tasks = user_memory.get(sender_id, {}).get('tasks', [])
+        tasks = user_memory[sender_id]['tasks'] if sender_id in user_memory else []
         if not tasks: return "Wala ka pang tasks 📝"
         return "📝 **Your Tasks:**\n" + "\n".join([f"{i+1}. `{t}`" for i,t in enumerate(tasks)])
 
@@ -104,7 +108,7 @@ def handle_commands(user_message, sender_id):
         user_memory[sender_id]['notes'].append(note)
         return f"✅ Note Saved: `{note}`"
     if "my notes" in msg:
-        notes = user_memory.get(sender_id, {}).get('notes', [])
+        notes = user_memory[sender_id]['notes'] if sender_id in user_memory else []
         if not notes: return "Wala ka pang notes 📝"
         return "📝 **Your Notes:**\n" + "\n".join([f"{i+1}. `{n}`" for i,n in enumerate(notes)])
 
@@ -130,7 +134,6 @@ def ask_groq_text(user_message):
     if any(word in user_message.lower() for word in ["lyrics", "poem"]):
         return "Can't share that due to copyright 😅"
     language = detect_language(user_message)
-    # Updated to active production models to resolve Groq 404 execution blocks
     models = ["llama-3.3-70b-versatile", "llama3-8b-8192"]
     for model in models:
         try:
