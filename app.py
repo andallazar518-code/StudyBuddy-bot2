@@ -14,7 +14,7 @@ VERIFY_TOKEN = "TUBO2026"
 user_memory = {}
 user_sessions = {}
 
-# = 1. BUONG AFFILIATE - 8 PRODUCTS BUO PA RIN
+# = 1. AFFILIATE LINKS - 100% INTACT
 MAIN_SHOPEE_STORE = "https://shopee.ph"
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX", "shopee": "https://shopee.ph"},
@@ -28,22 +28,28 @@ PRODUCT_MAP = {
 }
 
 def send_message(sender_id, text, quick_replies=None):
-    text = text[:2000]
-    # = AUTO CLOSE CODE BLOCKS
+    if not text: return
+    text = str(text)[:2000]
+    # AUTO CLOSE CODE BLOCKS
     if text.count("```") % 2 != 0: text += "\n```"
     has_code = any(kw in text for kw in ["def ", "class ", "import ", "print(", "self.", "="])
     if has_code and "```" not in text: text = f"```\n{text}\n```"
-    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
+    
+    url = f"https://facebook.com{PAGE_ACCESS_TOKEN or ''}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
-    try: requests.post(url, json=payload, timeout=10)
-    except: print("Send error")
+    try: 
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e: 
+        print(f"Send message error: {e}")
 
 def send_typing(sender_id, action="typing_on"):
-    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
+    url = f"https://facebook.com{PAGE_ACCESS_TOKEN or ''}"
     payload = {"recipient": {"id": sender_id}, "sender_action": action}
-    try: requests.post(url, json=payload, timeout=5)
-    except: pass
+    try: 
+        requests.post(url, json=payload, timeout=5)
+    except: 
+        pass
 
 def cleanup_memory():
     if len(user_memory) > 200:
@@ -58,7 +64,6 @@ def detect_language(text):
     return "English"
 
 def init_user_memory(sender_id):
-    """Ensures user data arrays exist to prevent potential crashing crashes"""
     if sender_id not in user_memory:
         user_memory[sender_id] = {
             'name': 'Boss',
@@ -71,13 +76,13 @@ def handle_commands(user_message, sender_id):
     init_user_memory(sender_id)
     msg = user_message.lower().strip()
 
-    # 2. NAME
+    # NAME COMMANDS
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip()
         user_memory[sender_id]['name'] = name.title()
         return f"👋 Welcome {name.title()}! GOD MODE ON"
 
-    # 3. GREETING
+    # GREETINGS
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory[sender_id]['name']
         qr = [
@@ -89,14 +94,14 @@ def handle_commands(user_message, sender_id):
         send_message(sender_id, f"**Assistant Pro v14.1** 🤖\nHi {name}!\n\nI can answer ANY question you have.\n\nCommands:\n`save note: [text]` \n`add task: [text]`", qr)
         return "HANDLED"
 
-    # 4. AFFILIATE MAPS
+    # AFFILIATE MAP CORES
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
             return f"💡 **{p['name']}**\nRecommended 👌\n\n**Shop:**\n{p['shopee']}"
     if any(k in msg for k in ["buy", "shop", "shopee", "gear"]):
         return f"🛒 **School Gear Store**\nAll needs:\n{MAIN_SHOPEE_STORE}"
 
-    # 5. TODO TASKS
+    # TODO MANAGEMENT
     if "add task" in msg:
         task = msg.replace("add task:", "").strip()
         user_memory[sender_id]['tasks'].append(task)
@@ -106,7 +111,7 @@ def handle_commands(user_message, sender_id):
         if not tasks: return "Wala ka pang tasks 📝"
         return "📝 **Your Tasks:**\n" + "\n".join([f"{i+1}. `{t}`" for i,t in enumerate(tasks)])
 
-    # 6. NOTES
+    # NOTES MANAGEMENT
     if "save note:" in msg:
         note = msg.replace("save note:", "").strip()
         user_memory[sender_id]['notes'].append(note)
@@ -116,19 +121,19 @@ def handle_commands(user_message, sender_id):
         if not notes: return "Wala ka pang notes 📝"
         return "📝 **Your Notes:**\n" + "\n".join([f"{i+1}. `{n}`" for i,n in enumerate(notes)])
 
-    # 7. QUIZ
+    # QUIZ ENGINE
     if "quiz me" in msg:
         subject = msg.replace("quiz me", "").strip()
         return f"📝 **Quiz: {subject.title()}**\nQ1: Explain {subject} in 1 sentence. Go! 💪"
 
-    # 8. POMODORO TIMER
+    # POMODORO
     if "pomodoro" in msg:
         try:
             minutes = int(''.join(filter(str.isdigit, msg)))
             return f"⏰ Timer set for {minutes} minutes! Focus! 💪"
         except: return "⏰ Type `pomodoro 25`"
 
-    # 9. MOOD
+    # MOOD CORNER
     if any(w in msg for w in ["pagod", "stress", "hirap"]):
         return random.choice(["Laban lang! 5 min break ☕", "Kaya mo yan! One step at a time 😊"])
 
@@ -137,82 +142,92 @@ def handle_commands(user_message, sender_id):
 def ask_groq_text(user_message):
     if any(word in user_message.lower() for word in ["lyrics", "poem"]):
         return "Can't share that due to copyright 😅"
+        
     language = detect_language(user_message)
-    models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
+    # UPDATED: Current stable Groq production models
+    models = ["llama3-70b-8192", "llama3-8b-8192"] [1]
+    
     for model in models:
         try:
-            # UPGRADED SYSTEM PROMPT: General all-purpose AI configuration
-            prompt = f"""You are an advanced, versatile AI Assistant. 
-            Answer any user questions or commands directly, intelligently, and completely. 
-            Reply in {language}. Keep the response engaging and well-structured.
-            If writing code: enclose code blocks completely within ``` markers.
-            User Message: {user_message}"""
-            
+            prompt = f"You are an advanced, versatile AI Assistant. Answer directly, intelligently, and completely. Reply in {language}. Enclose all code within ```."
             url = "https://groq.com"
-            headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-            data = {"model": model, "messages": [{"role": "user", "content": prompt}]}
-            r = requests.post(url, headers=headers, json=data, timeout=20)
-            return r.json()['choices'][0]['message']['content']
-        except: continue
-    return "AI busy 😅"
+            headers = {
+                "Authorization": f"Bearer {GROQ_API_KEY or ''}", 
+                "Content-Type": "application/json"
+            }
+            data = {
+                "model": model, 
+                "messages": [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_message}
+                ]
+            }
+            r = requests.post(url, headers=headers, json=data, timeout=15)
+            res_json = r.json()
+            if 'choices' in res_json and len(res_json['choices']) > 0:
+                return res_json['choices'][0]['message']['content']
+        except Exception as e: 
+            print(f"Groq Text Try Error ({model}): {e}")
+            continue
+    return "AI temporary busy, please try again! 😅"
 
 def ask_groq_vision(image_url, caption):
+    if not GROQ_API_KEY:
+        return "Vision Engine offline: Groq Key missing."
     language = detect_language(caption if caption else "")
     try:
-        # UPGRADED VISION SYSTEM PROMPT: Complete image analyzer
-        prompt = f"""You are an advanced AI Assistant with computer vision capabilities. 
-        Thoroughly analyze this image and answer any related commands or questions. 
-        Reply in {language}. 
-        User Request/Caption: {caption}"""
-        
+        prompt = f"You are an advanced AI Assistant with vision. Analyze this image carefully and address this prompt completely: {caption or 'Analyze image'}. Reply in {language}."
         url = "https://groq.com"
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        data = {"model": "llama-3.2-11b-vision-preview", "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": image_url}}]}]}
-        r = requests.post(url, headers=headers, json=data, timeout=30)
-        return r.json()['choices'][0]['message']['content']
-    except: return "Can't read image 😅"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}", 
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": "llama-3.2-11b-vision-preview", 
+            "messages": [{
+                "role": "user", 
+                "content": [
+                    {"type": "text", "text": prompt}, 
+                    {"type": "image_url", "image_url": {"url": image_url}}
+                ]
+            }]
+        }
+        r = requests.post(url, headers=headers, json=data, timeout=20)
+        res_json = r.json()
+        if 'choices' in res_json and len(res_json['choices']) > 0:
+            return res_json['choices'][0]['message']['content']
+    except Exception as e: 
+        print(f"Groq Vision Error: {e}")
+    return "Can't read image layout right now 😅"
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
         if request.args.get("hub.verify_token") == VERIFY_TOKEN:
             return request.args.get("hub.challenge"), 200
-        return "Error", 403
+        return "Error Verification Failed", 403
 
     if request.method == 'POST':
-        data = request.get_json()
-        if data.get('object') == 'page':
-            for entry in data.get('entry', []):
-                for event in entry.get('messaging', []):
-                    sender_id = event.get('sender', {}).get('id')
-                    if not sender_id: continue
-                    
-                    # Anti-spam protection
-                    if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2:
-                        continue
-                    user_sessions[sender_id] = time.time()
-
-                    send_typing(sender_id, "typing_on")
-
-                    # Handle Media/Images
-                    if 'message' in event and 'attachments' in event['message']:
-                        for attach in event['message']['attachments']:
-                            if attach['type'] == 'image':
-                                img_url = attach['payload']['url']
-                                caption = event['message'].get('text', '')
-                                reply = ask_groq_vision(img_url, caption)
-                                send_message(sender_id, reply)
-                        send_typing(sender_id, "typing_off")
-                        continue
-
-                    # Handle Standard Text Messages
-                    if 'message' in event and 'text' in event['message']:
-                        user_text = event['message']['text']
+        try:
+            data = request.get_json() or {}
+            if data.get('object') == 'page':
+                for entry in data.get('entry', []):
+                    for event in entry.get('messaging', []):
+                        sender_id = event.get('sender', {}).get('id')
+                        if not sender_id: continue
                         
-                        command_reply = handle_commands(user_text, sender_id)
-                        
-                        if command_reply == "HANDLED":
-                            send_typing(sender_id, "typing_off")
+                        # Anti-spam protection
+                        if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2:
                             continue
-                        elif command_reply:
-                            send_message(sender_id, command_reply)
+                        user_sessions[sender_id] = time.time()
+
+                        send_typing(sender_id, "typing_on")
+
+                        # Process Image attachments
+                        if 'message' in event and 'attachments' in event['message']:
+                            for attach in event['message']['attachments']:
+                                if attach.get('type') == 'image':
+                                    img_url = attach.get('payload', {}).get('url')
+                                    caption = event['message'].get('text', '')
+                                    if img_url:
+                                        reply = ask_groq_vision(img_url, caption)
