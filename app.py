@@ -7,8 +7,14 @@ import re
 
 app = Flask(__name__)
 
-PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+# Fetch and automatically clean the tokens to prevent URL parsing errors
+PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN", "").strip().replace('"', '').replace("'", "")
+# If facebook.com accidentally got pasted into the environment variable, extract just the token
+if "facebook.com" in PAGE_ACCESS_TOKEN.lower():
+    match = re.search(r'(EAAB[A-Za-z0-9]+)', PAGE_ACCESS_TOKEN)
+    if match: PAGE_ACCESS_TOKEN = match.group(1)
+
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip().replace('"', '').replace("'", "")
 VERIFY_TOKEN = "TUBO2026"
 
 user_memory = {}
@@ -28,31 +34,35 @@ PRODUCT_MAP = {
 }
 
 def send_message(sender_id, text, quick_replies=None):
+    if not text or not PAGE_ACCESS_TOKEN: return
     text = text[:2000]
-    # = BUG FIX 1: AUTO CLOSE CODE
+    # = AUTO CLOSE CODE
     if text.count("```") % 2!= 0: text += "\n```"
     has_code = any(kw in text for kw in ["def ", "class ", "import ", "print(", "self.", "="])
     if has_code and "```" not in text: text = f"```\n{text}\n```"
-    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
+    
+    url = "https://facebook.com"
+    params = {"access_token": PAGE_ACCESS_TOKEN}
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
     try: 
-        r = requests.post(url, json=payload, timeout=10)
-        # Detailed logging to find out exactly why Facebook didn't send the reply
+        r = requests.post(url, params=params, json=payload, timeout=10)
         if r.status_code != 200:
-            print(f"FB Error Code {r.status_code}: {r.text}")
+            print(f"Facebook API Rejected Reply: {r.status_code} - {r.text}")
     except Exception as e: 
         print(f"Send network error: {e}")
 
 def send_typing(sender_id, action="typing_on"):
-    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
+    if not PAGE_ACCESS_TOKEN: return
+    url = "https://facebook.com"
+    params = {"access_token": PAGE_ACCESS_TOKEN}
     payload = {"recipient": {"id": sender_id}, "sender_action": action}
-    try: requests.post(url, json=payload, timeout=5)
+    try: requests.post(url, params=params, json=payload, timeout=5)
     except: pass
 
 def cleanup_memory():
     if len(user_memory) > 50:
-        oldest = list(user_memory.keys())[0]
+        oldest = list(user_memory.keys())
         del user_memory[oldest]
 
 def detect_language(text):
@@ -82,7 +92,8 @@ def handle_commands(user_message, sender_id):
             {"content_type":"text", "title":"📸 Vision", "payload":"vision"},
             {"content_type":"text", "title":"🛒 Gear", "payload":"gear"}
         ]
-        send_message(sender_id, f"**Assistant Pro v14.1** 🤖\(\nHi {name}!\\)n\nSend: Text, Image, PDF, Voice\nCommands: `quiz me`, `save note:`, `add task:`", qr)
+        # FIX: Removed the invalid escape sequences and cleaned up formatting
+        send_message(sender_id, f"**Assistant Pro v14.1** 🤖\nHi {name}!\n\nSend: Text, Image, PDF, Voice\nCommands: `quiz me`, `save note:`, `add task:`", qr)
         return "HANDLED"
 
     # 4. AFFILIATE - BUO PA RIN
@@ -131,6 +142,7 @@ def handle_commands(user_message, sender_id):
     return None
 
 def ask_groq_text(user_message):
+    if not GROQ_API_KEY: return "Groq API Key configuration missing 😅"
     if any(word in user_message.lower() for word in ["lyrics", "poem"]):
         return "Can't share that due to copyright 😅"
     language = detect_language(user_message)
@@ -147,6 +159,7 @@ def ask_groq_text(user_message):
     return "AI busy 😅"
 
 def ask_groq_vision(image_url, caption):
+    if not GROQ_API_KEY: return "Groq API Key configuration missing 😅"
     language = detect_language(caption)
     try:
         prompt = f"You are an advanced AI Assistant with vision. Analyze this image thoroughly and fulfill this prompt completely: {caption or 'Analyze image'}. Reply in {language}."
@@ -166,10 +179,11 @@ def webhook():
 
     if request.method == 'POST':
         data = request.get_json()
-        if data.get('object') == 'page':
+        if data and data.get('object') == 'page':
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
-                    sender_id = event['sender']['id']
+                    sender_id = event.get('sender', {}).get('id')
+                    if not sender_id: continue
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2:
                         continue
                     
@@ -191,12 +205,3 @@ def webhook():
                         command_reply = handle_commands(user_text, sender_id)
                         
                         if command_reply == "HANDLED":
-                            send_typing(sender_id, "typing_off")
-                            continue
-                        elif command_reply:
-                            send_message(sender_id, command_reply)
-                        else:
-                            send_message(sender_id, ask_groq_text(user_text))
-
-                    send_typing(sender_id, "typing_off")
-        return "EVENT_RECEIVED", 200
