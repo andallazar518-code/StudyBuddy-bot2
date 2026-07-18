@@ -46,8 +46,10 @@ def send_message(sender_id, text, quick_replies=None):
 def send_typing(sender_id, action="typing_on"):
     url = f"https://facebook.com{PAGE_ACCESS_TOKEN or ''}"
     payload = {"recipient": {"id": sender_id}, "sender_action": action}
-    try: requests.post(url, json=payload, timeout=5)
-    except: pass
+    try: 
+        requests.post(url, json=payload, timeout=5)
+    except: 
+        pass
 
 def cleanup_memory():
     if len(user_memory) > 200:
@@ -142,13 +144,12 @@ def ask_groq_text(user_message):
         return "Can't share that due to copyright restrictions 😅"
         
     language = detect_language(user_message)
-    # Production-ready models
     models = ["llama3-70b-8192", "llama3-8b-8192"]
     
     for model in models:
         try:
             prompt = f"You are an advanced, multi-purpose AI Assistant. Answer all questions or requests directly, comprehensively, and intelligently. Reply in {language}. Enclose all code within ```."
-            url = "https://groq.com"
+            url = "https://api.groq.com/openai/v1/chat/completions"
             headers = {
                 "Authorization": f"Bearer {GROQ_API_KEY or ''}", 
                 "Content-Type": "application/json"
@@ -175,7 +176,7 @@ def ask_groq_vision(image_url, caption):
     language = detect_language(caption if caption else "")
     try:
         prompt = f"You are an advanced AI Assistant with computer vision. Analyze this image thoroughly and fulfill this prompt completely: {caption or 'Analyze image'}. Reply in {language}."
-        url = "https://groq.com"
+        url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY}", 
             "Content-Type": "application/json"
@@ -214,14 +215,14 @@ def webhook():
                         sender_id = event.get('sender', {}).get('id')
                         if not sender_id: continue
                         
-                        # Anti-spam logic
+                        # Anti-spam protection rule
                         if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2:
                             continue
                         user_sessions[sender_id] = time.time()
 
                         send_typing(sender_id, "typing_on")
 
-                        # Handle Images/Media
+                        # Process Image attachments
                         if 'message' in event and 'attachments' in event['message']:
                             for attach in event['message']['attachments']:
                                 if attach.get('type') == 'image':
@@ -229,3 +230,4 @@ def webhook():
                                     caption = event['message'].get('text', '')
                                     if img_url:
                                         reply = ask_groq_vision(img_url, caption)
+
