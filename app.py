@@ -13,9 +13,9 @@ VERIFY_TOKEN = "TUBO2026"
 user_memory = {}
 user_sessions = {}
 user_chat_count = {}
+user_rejected_affiliate = {} # BAGO: Para di na magulit pag nag "no"
 
-# = AFFILIATE - MAS APPEALING PERO SAFE =
-# IMPORTANT: Palitan mo ng sarili mong Shopee Affiliate Link
+# = AFFILIATE - SHOPEE ONLY =
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "🔥 Student Best Seller. Approved for board exams 📐"},
@@ -62,27 +62,26 @@ def detect_language(text):
 
 def check_affiliate_intent(msg):
     msg = msg.lower()
-    # SAFE TRIGGERS - HINDI SPAMMY
-    buy_words = ["buy", "shop", "shopee", "price", "link", "where to buy", "gear", "order", "store", "need", "gusto", "hanap"]
+    # FIX 1: DAPAT MAY PRODUCT NAME OR "SHOPEE/BUY" TALAGA
     product_words = list(PRODUCT_MAP.keys())
-    study_words = ["school", "study", "exam", "review", "assignment", "supplies"]
-
+    buy_words = ["buy", "shop", "shopee", "price", "link", "where to buy", "gear", "order", "store"]
+    
     has_product = any(w in msg for w in product_words)
     has_buy_intent = any(w in msg for w in buy_words)
-    has_study = any(w in msg for w in study_words)
-
-    return has_product or has_buy_intent or has_study
+    
+    # HINDI NA MAGTRITRIGGER SA "study, school, need" lang
+    return has_product or has_buy_intent
 
 def get_affiliate_reply(msg):
     msg = msg.lower()
-    # PRODUCT SPECIFIC - MAS APPEALING COPY
+    # PRODUCT SPECIFIC LANG
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
             return f"💡 **I recommend: {p['name']}**\n\n{p['hook']}\n\n👉 **Check price & reviews:**\n{p['shopee']}\n\n*Disclosure: This is an affiliate link. It helps support StudyBuddy at no extra cost to you.*"
 
-    # GENERAL STORE - SOFT SELL
-    if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store", "school", "study", "need", "supplies"]):
-        return f"🛒 **Need school supplies?**\n\nI put together my list of trusted student essentials here:\n\n{MAIN_SHOPEE_STORE}\n\n👆 Check for vouchers & free shipping\n*Disclosure: Affiliate link to support this bot*"
+    # GENERAL STORE - KUNG MAY "shop/shopee/buy" lang
+    if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
+        return f"🛒 **Need school supplies?**\n\nI put together my list of student essentials here:\n\n{MAIN_SHOPEE_STORE}\n\n👆 Check for vouchers & free shipping\n*Disclosure: Affiliate link to support this bot*"
 
     return None
 
@@ -95,6 +94,11 @@ def handle_commands(user_message, sender_id):
         user_chat_count[sender_id] = 0
     user_chat_count[sender_id] += 1
 
+    # FIX 2: REJECTION MEMORY - PAG NAG "NO" WAG NA MAG ALOK
+    if any(w in msg for w in ["no", "no need", "don't need", "hindi", "ayaw"]):
+        user_rejected_affiliate[sender_id] = True
+        return "Got it! 😊 Back to studying then. What can I help you with?"
+
     # 1. NAME
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip()
@@ -105,21 +109,22 @@ def handle_commands(user_message, sender_id):
     # 2. GREETING
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory.get(sender_id, {}).get('name', 'Boss')
-        return f"**StudyBuddy v14.7** 🤖\nHi {name}!\n\nAsk me anything. I can also help you find school deals 😊"
+        return f"**StudyBuddy v14.8** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
-    # 3. SOFT AUTO-SUGGEST AFTER 3 MESSAGES - SAFE VERSION
-    if user_chat_count[sender_id] == 3:
+    # 3. SOFT AUTO-SUGGEST AFTER 3 MESSAGES - PERO CHECK MUNA KUNG HINDI NAG REJECT
+    if user_chat_count[sender_id] == 3 and not user_rejected_affiliate.get(sender_id, False):
         return f"By the way {user_memory.get(sender_id, {}).get('name', 'Boss')} 😊\n\nIf you ever need school supplies or gadgets, just type `shop` and I'll send you my curated Shopee list with vouchers.\n\nNo pressure though! I'm also here to help with studies 💪"
 
     # 4. MANUAL SHOP TRIGGER
     if msg == "shop":
         return f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\nTip: Check vouchers daily for extra discounts!\n\n*Disclosure: Affiliate link*"
 
-    # 5. AFFILIATE
-    if check_affiliate_intent(msg):
-        affiliate_reply = get_affiliate_reply(msg)
-        if affiliate_reply:
-            return affiliate_reply
+    # 5. AFFILIATE - CHECK MUNA KUNG HINDI NAG REJECT
+    if not user_rejected_affiliate.get(sender_id, False):
+        if check_affiliate_intent(msg):
+            affiliate_reply = get_affiliate_reply(msg)
+            if affiliate_reply:
+                return affiliate_reply
 
     # 6. MOOD
     if any(w in msg for w in ["pagod", "stress", "hirap", "sad"]):
@@ -138,9 +143,9 @@ def ask_groq(user_message):
     models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
     for model in models:
         try:
-            prompt = f"""You are StudyBuddy PH v14.7. A friendly and helpful AI Assistant.
-Reply in {language}. Be helpful, kind, and conversational.
-If the user asks about school, studying, or products, you can casually mention that deals are often available on Shopee.
+            prompt = f"""You are StudyBuddy PH v14.8. A friendly and helpful AI Assistant.
+Reply in {language}. Be helpful, kind, and conversational. Max 6 sentences.
+Only mention Shopee if the user specifically asks about buying, price, or school products.
 Answer EVERY question.
 User: {user_message}"""
             url = "https://api.groq.com/openai/v1/chat/completions"
@@ -196,4 +201,4 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.7 FULL", 200
+    return "StudyBuddy v14.8 FULL", 200
