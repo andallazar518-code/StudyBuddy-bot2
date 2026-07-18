@@ -92,13 +92,11 @@ def handle_commands(user_message, sender_id):
     cleanup_memory()
     msg = user_message.lower().strip()
 
-    # = BAGO: FIX FOR BUTTON CLICKS =
-    # Pag nag click ng button minsan may "@Meta AI" or emojis
-    if "view deals" in msg or "open store" in msg or "show deals" in msg:
+    # = FIX 1: BETTER BUTTON DETECTION =
+    if "view deals" in msg or "open store" in msg or "show deals" in msg or "see all deals" in msg:
         msg = "shop"
-    if "no thanks" in msg:
+    if "no thanks" in msg or "no" == msg:
         msg = "no"
-    # = END FIX =
 
     # AUTO RESET AFTER 24 HOURS
     if sender_id in user_reject_time:
@@ -110,6 +108,7 @@ def handle_commands(user_message, sender_id):
     if sender_id not in user_chat_count:
         user_chat_count[sender_id] = 0
     user_chat_count[sender_id] += 1
+    user_auto_sent[sender_id] = False # FIX 2: RESET AUTO SENT EVERY NEW MESSAGE
 
     if msg.startswith("shopee_"):
         product = msg.replace("shopee_", "")
@@ -130,7 +129,7 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user_memory.get(sender_id, {}).get('name', 'Boss')
-        return f"**StudyBuddy v14.13** 🤖\nHi {name}!\n\nAsk me anything 😊"
+        return f"**StudyBuddy v14.14** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
     # AUTO SEND EVERY 5 MESSAGES
     if user_chat_count[sender_id] % 5 == 0 and not user_rejected_affiliate.get(sender_id, False) and not user_auto_sent.get(sender_id, False):
@@ -166,8 +165,8 @@ def ask_groq(user_message):
     models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
     for model in models:
         try:
-            prompt = f"""You are StudyBuddy PH v14.13. A friendly and helpful AI Assistant.
-Reply in {language}. Be helpful, kind, and conversational.
+            prompt = f"""You are StudyBuddy PH v14.14. A friendly and helpful AI Assistant.
+Reply in {language}. Be helpful, kind, and conversational. Max 6 sentences.
 Only mention Shopee if the user specifically asks about buying, price, or school products.
 Answer EVERY question.
 User: {user_message}"""
@@ -223,7 +222,7 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.13 FULL", 200
+    return "StudyBuddy v14.14 FULL", 200
 
 @app.route('/ping', methods=['GET'])
 def ping():
