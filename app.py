@@ -15,38 +15,38 @@ user_memory = {}
 user_sessions = {}
 
 # = 1. BUONG AFFILIATE - 8 PRODUCTS BUO PA RIN
-MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
+MAIN_SHOPEE_STORE = "https://shopee.ph"
 PRODUCT_MAP = {
-    "calculator": {"name": "Casio fx-991EX", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9"},
-    "notebook": {"name": "National Notebook 80s", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9"},
-    "laptop": {"name": "Lenovo Ideapad", "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9"},
-    "mouse": {"name": "Wireless Mouse", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9"},
-    "keyboard": {"name": "Mechanical Keyboard", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9"},
-    "headset": {"name": "Gaming Headset", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9"},
-    "bag": {"name": "JanSport Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9"},
-    "lamp": {"name": "LED Study Lamp", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9"},
+    "calculator": {"name": "Casio fx-991EX", "shopee": "https://shopee.ph"},
+    "notebook": {"name": "National Notebook 80s", "shopee": "https://shopee.ph"},
+    "laptop": {"name": "Lenovo Ideapad", "shopee": "https://shopee.ph"},
+    "mouse": {"name": "Wireless Mouse", "shopee": "https://shopee.ph"},
+    "keyboard": {"name": "Mechanical Keyboard", "shopee": "https://shopee.ph"},
+    "headset": {"name": "Gaming Headset", "shopee": "https://shopee.ph"},
+    "bag": {"name": "JanSport Backpack", "shopee": "https://shopee.ph"},
+    "lamp": {"name": "LED Study Lamp", "shopee": "https://shopee.ph"},
 }
 
 def send_message(sender_id, text, quick_replies=None):
     text = text[:2000]
-    # = BUG FIX 1: AUTO CLOSE CODE
-    if text.count("```") % 2!= 0: text += "\n```"
+    # = AUTO CLOSE CODE BLOCKS
+    if text.count("```") % 2 != 0: text += "\n```"
     has_code = any(kw in text for kw in ["def ", "class ", "import ", "print(", "self.", "="])
     if has_code and "```" not in text: text = f"```\n{text}\n```"
-    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
     try: requests.post(url, json=payload, timeout=10)
     except: print("Send error")
 
 def send_typing(sender_id, action="typing_on"):
-    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+    url = f"https://facebook.com{PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "sender_action": action}
     try: requests.post(url, json=payload, timeout=5)
     except: pass
 
 def cleanup_memory():
-    if len(user_memory) > 50:
+    if len(user_memory) > 200:
         oldest = list(user_memory.keys())[0]
         del user_memory[oldest]
 
@@ -57,64 +57,71 @@ def detect_language(text):
     if any(w in text.lower().split() for w in tagalog): return "Tagalog"
     return "English"
 
+def init_user_memory(sender_id):
+    """Ensures user data arrays exist to prevent potential crashing crashes"""
+    if sender_id not in user_memory:
+        user_memory[sender_id] = {
+            'name': 'Boss',
+            'notes': [],
+            'tasks': []
+        }
+
 def handle_commands(user_message, sender_id):
     cleanup_memory()
+    init_user_memory(sender_id)
     msg = user_message.lower().strip()
 
     # 2. NAME
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip()
-        if sender_id not in user_memory: user_memory[sender_id] = {}
         user_memory[sender_id]['name'] = name.title()
-        if 'notes' not in user_memory[sender_id]: user_memory[sender_id]['notes'] = []
-        if 'tasks' not in user_memory[sender_id]: user_memory[sender_id]['tasks'] = []
         return f"👋 Welcome {name.title()}! GOD MODE ON"
 
     # 3. GREETING
     if msg in ["hi", "hello", "hey", "kamusta"]:
-        name = user_memory.get(sender_id, {}).get('name', 'Boss')
+        name = user_memory[sender_id]['name']
         qr = [
-            {"content_type":"text", "title":"📚 Study", "payload":"study"},
+            {"content_type":"text", "title":"🚀 Ask AI", "payload":"ask_ai"},
             {"content_type":"text", "title":"💻 Code", "payload":"code"},
-            {"content_type":"text", "title":"📸 Image", "payload":"img"},
+            {"content_type":"text", "title":"📸 Vision", "payload":"vision"},
             {"content_type":"text", "title":"🛒 Gear", "payload":"gear"}
         ]
-        send_message(sender_id, f"**StudyBuddy v14.1** 🤖\nHi {name}!\n\nSend: Text, Image, PDF, Voice\nCommands: `quiz me`, `save note:`, `add task:`", qr)
+        send_message(sender_id, f"**Assistant Pro v14.1** 🤖\nHi {name}!\n\nI can answer ANY question you have.\n\nCommands:\n`save note: [text]` \n`add task: [text]`", qr)
         return "HANDLED"
 
-    # 4. AFFILIATE - BUO PA RIN
+    # 4. AFFILIATE MAPS
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
             return f"💡 **{p['name']}**\nRecommended 👌\n\n**Shop:**\n{p['shopee']}"
     if any(k in msg for k in ["buy", "shop", "shopee", "gear"]):
         return f"🛒 **School Gear Store**\nAll needs:\n{MAIN_SHOPEE_STORE}"
 
-    # 5. TODO - HINDI TINANGGAL
+    # 5. TODO TASKS
     if "add task" in msg:
         task = msg.replace("add task:", "").strip()
         user_memory[sender_id]['tasks'].append(task)
         return f"✅ Task Added: `{task}`"
     if "my tasks" in msg:
-        tasks = user_memory.get(sender_id, {}).get('tasks', [])
+        tasks = user_memory[sender_id]['tasks']
         if not tasks: return "Wala ka pang tasks 📝"
         return "📝 **Your Tasks:**\n" + "\n".join([f"{i+1}. `{t}`" for i,t in enumerate(tasks)])
 
-    # 6. NOTES - BAGO
+    # 6. NOTES
     if "save note:" in msg:
         note = msg.replace("save note:", "").strip()
         user_memory[sender_id]['notes'].append(note)
         return f"✅ Note Saved: `{note}`"
     if "my notes" in msg:
-        notes = user_memory.get(sender_id, {}).get('notes', [])
+        notes = user_memory[sender_id]['notes']
         if not notes: return "Wala ka pang notes 📝"
         return "📝 **Your Notes:**\n" + "\n".join([f"{i+1}. `{n}`" for i,n in enumerate(notes)])
 
-    # 7. QUIZ - BAGO
+    # 7. QUIZ
     if "quiz me" in msg:
         subject = msg.replace("quiz me", "").strip()
         return f"📝 **Quiz: {subject.title()}**\nQ1: Explain {subject} in 1 sentence. Go! 💪"
 
-    # 8. POMODORO - HINDI TINANGGAL
+    # 8. POMODORO TIMER
     if "pomodoro" in msg:
         try:
             minutes = int(''.join(filter(str.isdigit, msg)))
@@ -129,16 +136,19 @@ def handle_commands(user_message, sender_id):
 
 def ask_groq_text(user_message):
     if any(word in user_message.lower() for word in ["lyrics", "poem"]):
-        return "Can't share that due to copyright 😅 Pero sa studies 100% kita"
+        return "Can't share that due to copyright 😅"
     language = detect_language(user_message)
     models = ["llama-3.1-70b-versatile", "llama-3.1-8b-instant"]
     for model in models:
         try:
-            prompt = f"""You are StudyBuddy PH v14.1. Expert tutor ALL subjects.
-            Reply in {language}. Max 5 sentences.
-            CODING: Full code in ``` and close. MATH: Step by step.
-            Student: {user_message}"""
-            url = "https://api.groq.com/openai/v1/chat/completions"
+            # UPGRADED SYSTEM PROMPT: General all-purpose AI configuration
+            prompt = f"""You are an advanced, versatile AI Assistant. 
+            Answer any user questions or commands directly, intelligently, and completely. 
+            Reply in {language}. Keep the response engaging and well-structured.
+            If writing code: enclose code blocks completely within ``` markers.
+            User Message: {user_message}"""
+            
+            url = "https://groq.com"
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
             data = {"model": model, "messages": [{"role": "user", "content": prompt}]}
             r = requests.post(url, headers=headers, json=data, timeout=20)
@@ -147,10 +157,15 @@ def ask_groq_text(user_message):
     return "AI busy 😅"
 
 def ask_groq_vision(image_url, caption):
-    language = detect_language(caption)
+    language = detect_language(caption if caption else "")
     try:
-        prompt = f"You are StudyBuddy with Vision. Analyze. Reply in {language}. If math: solve. If code: debug. Caption: {caption}"
-        url = "https://api.groq.com/openai/v1/chat/completions"
+        # UPGRADED VISION SYSTEM PROMPT: Complete image analyzer
+        prompt = f"""You are an advanced AI Assistant with computer vision capabilities. 
+        Thoroughly analyze this image and answer any related commands or questions. 
+        Reply in {language}. 
+        User Request/Caption: {caption}"""
+        
+        url = "https://groq.com"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.2-11b-vision-preview", "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": image_url}}]}]}
         r = requests.post(url, headers=headers, json=data, timeout=30)
@@ -169,41 +184,35 @@ def webhook():
         if data.get('object') == 'page':
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
-                    sender_id = event['sender']['id']
+                    sender_id = event.get('sender', {}).get('id')
+                    if not sender_id: continue
+                    
+                    # Anti-spam protection
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2:
                         continue
                     user_sessions[sender_id] = time.time()
+
                     send_typing(sender_id, "typing_on")
-                    time.sleep(0.3)
-                    try:
-                        # IMAGE + FILE + VOICE
-                        if 'message' in event and 'attachments' in event['message']:
-                            att = event['message']['attachments'][0]
-                            caption = event['message'].get('text', 'Analyze this')
-                            if att['type'] == 'image':
-                                reply = ask_groq_vision(att['payload']['url'], caption)
+
+                    # Handle Media/Images
+                    if 'message' in event and 'attachments' in event['message']:
+                        for attach in event['message']['attachments']:
+                            if attach['type'] == 'image':
+                                img_url = attach['payload']['url']
+                                caption = event['message'].get('text', '')
+                                reply = ask_groq_vision(img_url, caption)
                                 send_message(sender_id, reply)
-                            elif att['type'] == 'file':
-                                send_message(sender_id, "📄 Got file! Type `summarize this`")
-                            elif att['type'] == 'audio':
-                                send_message(sender_id, "🎤 Got voice! Type the text and I'll answer")
-                            continue
-
-                        if 'message' in event and 'text' in event['message']:
-                            user_message = event['message']['text']
-                            cmd = handle_commands(user_message, sender_id)
-                            if cmd == "HANDLED": pass
-                            elif cmd: send_message(sender_id, cmd)
-                            else:
-                                ai = ask_groq_text(user_message)
-                                send_message(sender_id, ai)
-                    except Exception as e:
-                        print("ERROR:", e)
-                        send_message(sender_id, "Error 😅")
-                    finally:
                         send_typing(sender_id, "typing_off")
-        return "ok", 200
+                        continue
 
-@app.route('/', methods=['GET'])
-def home():
-    return "StudyBuddy v14.1 FULL", 200
+                    # Handle Standard Text Messages
+                    if 'message' in event and 'text' in event['message']:
+                        user_text = event['message']['text']
+                        
+                        command_reply = handle_commands(user_text, sender_id)
+                        
+                        if command_reply == "HANDLED":
+                            send_typing(sender_id, "typing_off")
+                            continue
+                        elif command_reply:
+                            send_message(sender_id, command_reply)
