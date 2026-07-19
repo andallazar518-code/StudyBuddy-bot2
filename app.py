@@ -73,7 +73,6 @@ def send_typing(sender_id, action="typing_on"):
 
 def detect_language(text):
     text_lower = text.lower()
-    if "unsa" in text_lower or "ka" in text_lower: return "Bisaya"
     if "ng" in text_lower or "ba" in text_lower: return "Tagalog"
     return "English"
 
