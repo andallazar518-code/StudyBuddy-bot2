@@ -16,21 +16,26 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-user_sessions = {} # temp lang to, ok lang burahin
+user_sessions = {} # anti spam lang to
 
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "Struggling with complex math? 📐", "benefit": "Approved for board exams. 552 functions"},
     "notebook": {"name": "National Notebook 80 Leaves", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "Ink keeps bleeding through? 📓", "benefit": "Thick 70gsm paper"},
+    "laptop": {"name": "Lenovo Ideapad 3 Laptop", "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9", "hook": "Need a laptop for school & work? 💻", "benefit": "Budget-friendly. Intel i3"},
+    "mouse": {"name": "Wireless Silent Mouse", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Wrist pain from clicking? 🖱️", "benefit": "Ergonomic design. Silent click"},
+    "keyboard": {"name": "RGB Mechanical Keyboard", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Want faster typing? ⌨️", "benefit": "Blue switches. Plug and play"},
+    "headset": {"name": "Gaming Headset with Noise Cancelling Mic", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Can't hear clearly in online class? 🎧", "benefit": "Crystal clear mic"},
+    "bag": {"name": "JanSport SuperBreak Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9", "hook": "Bag keeps getting wet? 🎒", "benefit": "Water resistant. 15L capacity"},
+    "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Eyes getting tired at night? 💡", "benefit": "3 light modes. Eye protection"},
 }
 
-# = DB FUNCTIONS = BAGO TO
+# = DB FUNCTIONS =
 def get_user(sender_id):
     data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
     if data.data:
         return data.data[0]
     else:
-        # Create new user
         new_user = {
             "sender_id": sender_id,
             "name": None,
@@ -50,7 +55,8 @@ def send_message(sender_id, text, quick_replies=None):
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
-    requests.post(url, json=payload, timeout=10)
+    try: requests.post(url, json=payload, timeout=10)
+    except Exception as e: print("Send error:", e)
 
 def send_typing(sender_id, action="typing_on"):
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
@@ -65,7 +71,7 @@ def detect_language(text):
 def check_affiliate_intent(msg):
     msg = msg.lower()
     product_words = list(PRODUCT_MAP.keys())
-    buy_words = ["buy", "shop", "shopee", "price", "link"]
+    buy_words = ["buy", "shop", "shopee", "price", "link", "gear", "order", "store"]
     has_product = any(w in msg for w in product_words)
     has_buy_intent = any(w in msg for w in buy_words)
     return has_product or has_buy_intent
@@ -80,7 +86,7 @@ def get_affiliate_reply(msg):
             ]
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
             return {"text": text, "quick_replies": qr}
-    if any(k in msg for k in ["buy", "shop", "shopee"]):
+    if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         text = f"🛒 **Student Essentials Store**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*"
         return {"text": text, "quick_replies": qr}
@@ -88,7 +94,7 @@ def get_affiliate_reply(msg):
 
 def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
-    user = get_user(sender_id) # KUHA SA DB
+    user = get_user(sender_id)
 
     # AUTO RESET AFTER 24 HOURS
     if user['reject_time']:
@@ -105,7 +111,7 @@ def handle_commands(user_message, sender_id):
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    if any(w in msg for w in ["no", "no need", "hindi"]):
+    if any(w in msg for w in ["no", "no need", "hindi", "ayaw"]):
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time()})
         return "Got it! 😊 No worries. I'll ask again tomorrow. Support bot: https://bit.ly/ryzoxau"
 
@@ -114,11 +120,11 @@ def handle_commands(user_message, sender_id):
         update_user(sender_id, {"name": name})
         return f"👋 Welcome {name}! Nice to meet you 😊"
 
-    if msg in ["hi", "hello", "hey"]:
+    if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user['name'] or 'Boss'
         return f"**StudyBuddy v14.16 DB** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
-    # = BAGONG RULE: EVERY 8 MESSAGES LANG = NAKA DB NA
+    # EVERY 8 MESSAGES LANG
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
         update_user(sender_id, {"auto_sent": True})
         qr = [{"content_type":"text", "title":"🛒 View Deals", "payload":"shop"}, {"content_type":"text", "title":"No thanks", "payload":"no"}]
@@ -134,12 +140,19 @@ def handle_commands(user_message, sender_id):
             affiliate_reply = get_affiliate_reply(msg)
             if affiliate_reply: return affiliate_reply
 
+    if any(w in msg for w in ["pagod", "stress", "hirap", "sad"]):
+        return random.choice([
+            "Laban lang! Take a 5 min break ☕ You got this!",
+            "Kaya mo yan! One step at a time 😊 I'm here for you"
+        ])
     return None
 
 def ask_groq(user_message):
+    if any(word in user_message.lower() for word in ["lyrics", "poem"]):
+        return "Can't share that due to copyright 😅 Pero ask me anything else!"
     language = detect_language(user_message)
     try:
-        prompt = f"You are StudyBuddy PH v14.16. Reply in {language}. Max 10 sentences.\nUser: {user_message}"
+        prompt = f"You are StudyBuddy PH v14.16. A friendly AI Assistant. Reply in {language}. Max 10 sentences. Only mention Shopee if asked. Answer EVERY question.\nUser: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.1-70b-versatile", "messages": [{"role": "user", "content": prompt}]}
@@ -166,6 +179,9 @@ def webhook():
                     send_typing(sender_id)
                     time.sleep(0.3)
                     try:
+                        if 'message' in event and 'attachments' in event['message']:
+                            send_message(sender_id, "I can only reply to text messages for now 😅")
+                            continue
                         if 'message' in event and 'text' in event['message']:
                             user_message = event['message']['text']
                             cmd = handle_commands(user_message, sender_id)
