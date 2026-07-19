@@ -40,28 +40,32 @@ def get_fb_name(sender_id):
         print("FB NAME ERROR:", e)
     return None
 
-# = DB FUNCTIONS = FIXED: AUTO UPDATE OLD USERS =
+# = DB FUNCTIONS = ANTI-ERROR NA =
 def get_user(sender_id):
-    data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
-    if data.data:
-        user = data.data[0]
-        # FIX: KUNG WALANG NAME O "BOSS" PA DIN, KUHAIN SA FB AT IUPDATE
-        if not user['name'] or user['name'] == 'Boss':
+    try:
+        data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
+        if data.data:
+            user = data.data[0]
+            if not user['name'] or user['name'] == 'Boss':
+                fb_name = get_fb_name(sender_id)
+                if fb_name:
+                    update_user(sender_id, {"name": fb_name})
+                    user['name'] = fb_name
+            return user
+        else:
             fb_name = get_fb_name(sender_id)
-            if fb_name:
-                update_user(sender_id, {"name": fb_name})
-                user['name'] = fb_name
-                print(f"Updated name for {sender_id} to {fb_name}")
-        return user
-    else:
-        # AUTO KUHA NAME PAG FIRST TIME
-        fb_name = get_fb_name(sender_id)
-        new_user = {"sender_id": sender_id, "name": fb_name, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
-        supabase.table('users').insert(new_user).execute()
-        return new_user
+            new_user = {"sender_id": sender_id, "name": fb_name, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
+            supabase.table('users').insert(new_user).execute()
+            return new_user
+    except Exception as e:
+        print("DB GET ERROR:", e)
+        return {"sender_id": sender_id, "name": "Boss", "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
 
 def update_user(sender_id, updates):
-    supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
+    try:
+        supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
+    except Exception as e:
+        print("DB UPDATE ERROR:", e)
 
 def send_message(sender_id, text, quick_replies=None):
     text = text[:2000]
@@ -123,6 +127,19 @@ def handle_commands(user_message, sender_id):
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time()})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
 
+    if msg == "reset name":
+        update_user(sender_id, {"name": None})
+        return "👋 Name reset! Ano pangalan mo?"
+
+    if msg in ["help", "menu", "commands"]:
+        return """📚 **StudyBuddy Commands:**
+`Hi/Hello` - Greet
+`calculator/laptop` - Product reco
+`shop` - Store link
+`Ako si [name]` - Save name
+`Reset name` - Palit name
+`Help` - Show this menu"""
+
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip().title()
         update_user(sender_id, {"name": name})
@@ -130,7 +147,7 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user['name'] or 'Boss'
-        return f"**StudyBuddy v14.24 DB** 🤖\nHi {name}!\n\nAsk me anything 😊"
+        return f"**StudyBuddy v14.25 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
         update_user(sender_id, {"auto_sent": True})
@@ -158,7 +175,7 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.24. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.25. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -188,6 +205,13 @@ def webhook():
                     send_typing(sender_id)
                     time.sleep(0.3)
                     try:
+                        # FIX: HANDLE GET STARTED BUTTON
+                        if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
+                            user = get_user(sender_id)
+                            name = user['name'] or 'Boss'
+                            send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!")
+                            continue
+
                         if 'message' in event and 'attachments' in event['message']:
                             send_message(sender_id, "I can only reply to text messages for now 😅")
                             continue
@@ -206,4 +230,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.24 DB", 200
+def home(): return "StudyBuddy v14.25 DB", 200
