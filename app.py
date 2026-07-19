@@ -155,7 +155,7 @@ def ask_groq(user_message):
         prompt = f"You are StudyBuddy PH v14.16. A friendly AI Assistant. Reply in {language}. Max 10 sentences. Only mention Shopee if asked. Answer EVERY question.\nUser: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        data = {"model": "llama-3.1-70b-versatile", "messages": [{"role": "user", "content": prompt}]}
+        data = {"model": "llama-3.1-8b-instant", "messages": [{"role": "user", "content": prompt}]}
         r = requests.post(url, headers=headers, json=data, timeout=20)
         return r.json()['choices'][0]['message']['content']
     except:
