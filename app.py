@@ -29,12 +29,26 @@ PRODUCT_MAP = {
     "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Eyes getting tired at night? 💡", "benefit": "3 light modes. Eye protection"},
 }
 
-# = DB FUNCTIONS =
+# = KUHA AUTOMATIC NAME FROM FB =
+def get_fb_name(sender_id):
+    try:
+        url = f"https://graph.facebook.com/v19.0/{sender_id}?fields=first_name&access_token={PAGE_ACCESS_TOKEN}"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            return r.json().get("first_name", None)
+    except Exception as e:
+        print("FB NAME ERROR:", e)
+    return None
+
+# = DB FUNCTIONS = BINAGO LANG TO =
 def get_user(sender_id):
     data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
-    if data.data: return data.data[0]
+    if data.data:
+        return data.data[0]
     else:
-        new_user = {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
+        # AUTO KUHA NAME PAG FIRST TIME
+        fb_name = get_fb_name(sender_id)
+        new_user = {"sender_id": sender_id, "name": fb_name, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
         supabase.table('users').insert(new_user).execute()
         return new_user
 
@@ -71,7 +85,6 @@ def get_affiliate_reply(msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
-            # FIX 1: SAFE BUTTONS PARA DI MA-TRIGGER SI @META AI
             qr = [{"content_type":"text", "title":"👉 View Item", "payload":f"shopee_{product}"}, {"content_type":"text", "title":"📎 See All", "payload":"shop"}]
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
             return {"text": text, "quick_replies": qr}
@@ -98,7 +111,6 @@ def handle_commands(user_message, sender_id):
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    # FIX 2: HANDLE "NO" DITO PARA DI MAG ERROR
     if msg in ["no", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time()})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
@@ -110,15 +122,13 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user['name'] or 'Boss'
-        return f"**StudyBuddy v14.22 DB** 🤖\nHi {name}!\n\nAsk me anything 😊"
+        return f"**StudyBuddy v14.23 DB** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
         update_user(sender_id, {"auto_sent": True})
-        # FIX 3: PALIT BUTTON TEXT PARA SAFE
         qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
         name = user['name'] or 'Boss'
-        # FIX 4: TINANGGAL "Shopee" SA TEXT PARA DI MA-TRIGGER
-        return {"text": f"Quick tip {name} 😊\n\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?", "quick_replies": qr}
+        return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?", "quick_replies": qr}
 
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
@@ -133,7 +143,6 @@ def handle_commands(user_message, sender_id):
         return random.choice(["Laban lang! Take a 5 min break ☕ You got this!", "Kaya mo yan! One step at a time 😊 I'm here for you"])
     return None
 
-# FIX 5: MAY MEMORY NA + ERROR LOGS
 def ask_groq(user_message, sender_id):
     user = get_user(sender_id)
     name = user['name'] or "Boss"
@@ -141,7 +150,7 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.22. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.23. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -189,4 +198,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.22 DB", 200
+def home(): return "StudyBuddy v14.23 DB", 200
