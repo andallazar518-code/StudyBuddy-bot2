@@ -29,7 +29,7 @@ PRODUCT_MAP = {
     "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Eyes getting tired at night? 💡", "benefit": "3 light modes. Eye protection"},
 }
 
-# = KUHA AUTOMATIC NAME FROM FB =
+# = GET AUTOMATIC NAME FROM FB =
 def get_fb_name(sender_id):
     try:
         url = f"https://graph.facebook.com/v19.0/{sender_id}?fields=first_name&access_token={PAGE_ACCESS_TOKEN}"
@@ -40,7 +40,7 @@ def get_fb_name(sender_id):
         print("FB NAME ERROR:", e)
     return None
 
-# = DB FUNCTIONS = ANTI-ERROR NA =
+# = DB FUNCTIONS = ANTI-ERROR =
 def get_user(sender_id):
     try:
         data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
@@ -59,7 +59,7 @@ def get_user(sender_id):
             return new_user
     except Exception as e:
         print("DB GET ERROR:", e)
-        return {"sender_id": sender_id, "name": "Boss", "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
+        return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
 
 def update_user(sender_id, updates):
     try:
@@ -129,30 +129,39 @@ def handle_commands(user_message, sender_id):
 
     if msg == "reset name":
         update_user(sender_id, {"name": None})
-        return "👋 Name reset! Ano pangalan mo?"
+        return "👋 Name reset! What's your name?"
+
+    if msg.startswith("setname_"):
+        name = msg.replace("setname_", "").strip().title()
+        update_user(sender_id, {"name": name})
+        return f"👋 Nice to meet you {name}! Got it saved 😊"
 
     if msg in ["help", "menu", "commands"]:
         return """📚 **StudyBuddy Commands:**
 `Hi/Hello` - Greet
-`calculator/laptop` - Product reco
+`calculator/laptop` - Product recommendation
 `shop` - Store link
-`Ako si [name]` - Save name
-`Reset name` - Palit name
+`My name is [name]` - Save name
+`Reset name` - Change name
 `Help` - Show this menu"""
 
-    if "name is" in msg or "ako si" in msg:
-        name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip().title()
+    if "name is" in msg or "i am" in msg:
+        name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
         update_user(sender_id, {"name": name})
         return f"👋 Welcome {name}! Nice to meet you 😊"
 
-    if msg in ["hi", "hello", "hey", "kamusta"]:
-        name = user['name'] or 'Boss'
-        return f"**StudyBuddy v14.25 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+    # FIX FOR FB LITE USERS
+    if msg in ["hi", "hello", "hey"]:
+        name = user['name']
+        if not name:
+            qr = [{"content_type":"text", "title":"👋 Set Name", "payload":"setname_User"}]
+            return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
+        return f"**StudyBuddy v14.26 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
         update_user(sender_id, {"auto_sent": True})
         qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
-        name = user['name'] or 'Boss'
+        name = user['name'] or 'there'
         return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?", "quick_replies": qr}
 
     if msg == "shop":
@@ -164,18 +173,18 @@ def handle_commands(user_message, sender_id):
             affiliate_reply = get_affiliate_reply(msg)
             if affiliate_reply: return affiliate_reply
 
-    if any(w in msg for w in ["pagod", "stress", "hirap", "sad"]):
-        return random.choice(["Laban lang! Take a 5 min break ☕ You got this!", "Kaya mo yan! One step at a time 😊 I'm here for you"])
+    if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
+        return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
     return None
 
 def ask_groq(user_message, sender_id):
     user = get_user(sender_id)
-    name = user['name'] or "Boss"
+    name = user['name'] or "there"
     if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.25. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.26. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -205,10 +214,9 @@ def webhook():
                     send_typing(sender_id)
                     time.sleep(0.3)
                     try:
-                        # FIX: HANDLE GET STARTED BUTTON
                         if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
                             user = get_user(sender_id)
-                            name = user['name'] or 'Boss'
+                            name = user['name'] or 'there'
                             send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!")
                             continue
 
@@ -230,4 +238,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.25 DB", 200
+def home(): return "StudyBuddy v14.26 DB", 200
