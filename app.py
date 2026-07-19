@@ -71,7 +71,8 @@ def get_affiliate_reply(msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
-            qr = [{"content_type":"text", "title":"👉 View on Shopee", "payload":f"shopee_{product}"}, {"content_type":"text", "title":"🛒 See All", "payload":"shop"}] # FIX: TINANGGAL "Deals"
+            # FIX 1: SAFE BUTTONS PARA DI MA-TRIGGER SI @META AI
+            qr = [{"content_type":"text", "title":"👉 View Item", "payload":f"shopee_{product}"}, {"content_type":"text", "title":"📎 See All", "payload":"shop"}]
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
             return {"text": text, "quick_replies": qr}
     if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
@@ -97,9 +98,10 @@ def handle_commands(user_message, sender_id):
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    if any(w in msg for w in ["no", "no need", "hindi", "ayaw", "later", "not now"]): # FIX: DINAGDAG "later"
+    # FIX 2: HANDLE "NO" DITO PARA DI MAG ERROR
+    if msg in ["no", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time()})
-        return "Got it! 😊 No worries. I'll ask again tomorrow."
+        return "Got it! 😊 I'll stop asking about supplies for 24 hours."
 
     if "name is" in msg or "ako si" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("ako si", "").strip().title()
@@ -108,13 +110,15 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey", "kamusta"]:
         name = user['name'] or 'Boss'
-        return f"**StudyBuddy v14.21 DB** 🤖\nHi {name}!\n\nAsk me anything 😊"
+        return f"**StudyBuddy v14.22 DB** 🤖\nHi {name}!\n\nAsk me anything 😊"
 
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
         update_user(sender_id, {"auto_sent": True})
-        qr = [{"content_type":"text", "title":"🛒 See Items", "payload":"shop"}, {"content_type":"text", "title":"Later", "payload":"no"}] # FIX: SAFE WORDS
+        # FIX 3: PALIT BUTTON TEXT PARA SAFE
+        qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
         name = user['name'] or 'Boss'
-        return {"text": f"Quick tip {name} 😊\n\nNeed school supplies? I have a curated Shopee list with student vouchers.\n\nWant the link?", "quick_replies": qr}
+        # FIX 4: TINANGGAL "Shopee" SA TEXT PARA DI MA-TRIGGER
+        return {"text": f"Quick tip {name} 😊\n\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?", "quick_replies": qr}
 
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
@@ -129,7 +133,7 @@ def handle_commands(user_message, sender_id):
         return random.choice(["Laban lang! Take a 5 min break ☕ You got this!", "Kaya mo yan! One step at a time 😊 I'm here for you"])
     return None
 
-# FIX: MAY MEMORY NA + BETTER MODEL + ERROR LOG
+# FIX 5: MAY MEMORY NA + ERROR LOGS
 def ask_groq(user_message, sender_id):
     user = get_user(sender_id)
     name = user['name'] or "Boss"
@@ -137,14 +141,14 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.21. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.22. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], "temperature": 0.7, "max_tokens": 300}
         r = requests.post(url, headers=headers, json=data, timeout=30)
         if r.status_code!= 200:
-            print("GROQ STATUS:", r.status_code, r.text) # PARA MAKITA SA LOGS
+            print("GROQ STATUS:", r.status_code, r.text)
             return f"The AI is resting 😅 Error code: {r.status_code}. Please try again {name}."
         return r.json()['choices'][0]['message']['content']
     except Exception as e:
@@ -176,7 +180,7 @@ def webhook():
                             if isinstance(cmd, dict): send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
                             elif cmd: send_message(sender_id, cmd)
                             else:
-                                ai = ask_groq(user_message, sender_id) # FIX: DINAGDAG sender_id
+                                ai = ask_groq(user_message, sender_id)
                                 send_message(sender_id, ai)
                     except Exception as e:
                         print("ERROR:", e)
@@ -185,4 +189,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.21 DB", 200
+def home(): return "StudyBuddy v14.22 DB", 200
