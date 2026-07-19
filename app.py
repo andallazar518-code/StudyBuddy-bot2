@@ -104,6 +104,8 @@ def get_affiliate_reply(msg):
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         text = f"🛒 **Student Essentials Store**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*"
         return {"text": text, "quick_replies": qr}
+    if any(k in msg for k in ["laptop", "phone", "charger", "earphone", "tablet", "monitor"]):
+        return {"text": f"I don't have that specific item yet 😅 But check my student essentials store here:\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*"}
     return None
 
 def handle_commands(user_message, sender_id):
@@ -123,7 +125,12 @@ def handle_commands(user_message, sender_id):
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    if msg in ["no", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
+    # SAFE ADD: YES/NO FALLBACK FOR FB LITE
+    if msg in ["yes", "y"]:
+        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
+        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+
+    if msg in ["no", "n", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time()})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
 
@@ -156,13 +163,14 @@ def handle_commands(user_message, sender_id):
         if not name:
             qr = [{"content_type":"text", "title":"👋 Set Name", "payload":"setname_User"}]
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
-        return f"**StudyBuddy v14.26 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+        return f"**StudyBuddy v14.27 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
+    # SAFE ADD: QUICK TIP WITH TEXT FALLBACK
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
         update_user(sender_id, {"auto_sent": True})
         qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
         name = user['name'] or 'there'
-        return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?", "quick_replies": qr}
+        return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
 
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
@@ -184,7 +192,7 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.26. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.27. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -238,4 +246,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.26 DB", 200
+def home(): return "StudyBuddy v14.27 DB", 200
