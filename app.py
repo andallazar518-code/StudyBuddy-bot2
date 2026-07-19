@@ -112,12 +112,16 @@ def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
     user = get_user(sender_id)
 
+    # SAFE ADD: BLOCK FB LITE BUTTON BUG
+    if "@meta ai" in msg or "open link" in msg:
+        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
+        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+
     if user['reject_time']:
         if time.time() - user['reject_time'] > 86400:
             update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
 
     new_count = user['chat_count'] + 1
-    # FIX: Hindi na nire-reset ang auto_sent dito
     update_user(sender_id, {"chat_count": new_count})
 
     # AUTO SAVE NAME IF BOT JUST ASKED
@@ -171,11 +175,11 @@ def handle_commands(user_message, sender_id):
             qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
             update_user(sender_id, {"waiting_for_name": True})
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
-        return f"**StudyBuddy v14.29 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+        return f"**StudyBuddy v14.30 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
     # QUICK TIP WITH TEXT FALLBACK
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
-        update_user(sender_id, {"auto_sent": True}) # Dito lang nagse-set
+        update_user(sender_id, {"auto_sent": True})
         qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
         name = user['name'] or 'there'
         return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
@@ -200,7 +204,7 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.29. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.30. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -248,10 +252,10 @@ def webhook():
                                 ai = ask_groq(user_message, sender_id)
                                 send_message(sender_id, ai)
                     except Exception as e:
-                        print(f"ERROR for {sender_id}:", e) # BETTER LOG
+                        print(f"ERROR for {sender_id}:", e)
                         send_message(sender_id, "Error 😅")
                     finally: send_typing(sender_id, "typing_off")
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.29 DB", 200
+def home(): return "StudyBuddy v14.30 DB", 200
