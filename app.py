@@ -37,7 +37,7 @@ def get_fb_name(sender_id):
         if r.status_code == 200:
             return r.json().get("first_name", None)
     except Exception as e:
-        print("FB NAME ERROR:", e)
+        print(f"FB NAME ERROR for {sender_id}:", e)
     return None
 
 # = DB FUNCTIONS = ANTI-ERROR =
@@ -54,18 +54,18 @@ def get_user(sender_id):
             return user
         else:
             fb_name = get_fb_name(sender_id)
-            new_user = {"sender_id": sender_id, "name": fb_name, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
+            new_user = {"sender_id": sender_id, "name": fb_name, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False}
             supabase.table('users').insert(new_user).execute()
             return new_user
     except Exception as e:
-        print("DB GET ERROR:", e)
-        return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False}
+        print(f"DB GET ERROR for {sender_id}:", e)
+        return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False}
 
 def update_user(sender_id, updates):
     try:
         supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
     except Exception as e:
-        print("DB UPDATE ERROR:", e)
+        print(f"DB UPDATE ERROR for {sender_id}:", e)
 
 def send_message(sender_id, text, quick_replies=None):
     text = text[:2000]
@@ -73,7 +73,7 @@ def send_message(sender_id, text, quick_replies=None):
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
     try: requests.post(url, json=payload, timeout=10)
-    except Exception as e: print("Send error:", e)
+    except Exception as e: print(f"Send error for {sender_id}:", e)
 
 def send_typing(sender_id, action="typing_on"):
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
@@ -117,7 +117,14 @@ def handle_commands(user_message, sender_id):
             update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
 
     new_count = user['chat_count'] + 1
-    update_user(sender_id, {"chat_count": new_count, "auto_sent": False})
+    # FIX: Hindi na nire-reset ang auto_sent dito
+    update_user(sender_id, {"chat_count": new_count})
+
+    # AUTO SAVE NAME IF BOT JUST ASKED
+    if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in ["help", "menu", "shop", "reset name"]:
+        name = user_message.strip().title()
+        update_user(sender_id, {"name": name, "waiting_for_name": False})
+        return f"👋 Nice to meet you {name}! Got it saved 😊"
 
     if msg.startswith("shopee_"):
         product = msg.replace("shopee_", "")
@@ -125,22 +132,22 @@ def handle_commands(user_message, sender_id):
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    # SAFE ADD: YES/NO FALLBACK FOR FB LITE
+    # YES/NO FALLBACK FOR FB LITE
     if msg in ["yes", "y"]:
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
 
     if msg in ["no", "n", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
-        update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time()})
+        update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time(), "waiting_for_name": False})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
 
     if msg == "reset name":
-        update_user(sender_id, {"name": None})
+        update_user(sender_id, {"name": None, "waiting_for_name": True})
         return "👋 Name reset! What's your name?"
 
     if msg.startswith("setname_"):
         name = msg.replace("setname_", "").strip().title()
-        update_user(sender_id, {"name": name})
+        update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
 
     if msg in ["help", "menu", "commands"]:
@@ -154,20 +161,21 @@ def handle_commands(user_message, sender_id):
 
     if "name is" in msg or "i am" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
-        update_user(sender_id, {"name": name})
+        update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Welcome {name}! Nice to meet you 😊"
 
     # FIX FOR FB LITE USERS
     if msg in ["hi", "hello", "hey"]:
         name = user['name']
         if not name:
-            qr = [{"content_type":"text", "title":"👋 Set Name", "payload":"setname_User"}]
+            qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
+            update_user(sender_id, {"waiting_for_name": True})
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
-        return f"**StudyBuddy v14.27 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+        return f"**StudyBuddy v14.29 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
-    # SAFE ADD: QUICK TIP WITH TEXT FALLBACK
+    # QUICK TIP WITH TEXT FALLBACK
     if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
-        update_user(sender_id, {"auto_sent": True})
+        update_user(sender_id, {"auto_sent": True}) # Dito lang nagse-set
         qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
         name = user['name'] or 'there'
         return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
@@ -192,18 +200,18 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     language = detect_language(user_message)
     try:
-        system_prompt = f"You are StudyBuddy PH v14.27. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
+        system_prompt = f"You are StudyBuddy PH v14.29. A friendly and helpful AI Assistant from the Philippines. Reply in {language}. Keep answers under 8 sentences. IMPORTANT: The user's name is {name}. Use their name naturally."
         user_prompt = f"User Question: {user_message}"
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], "temperature": 0.7, "max_tokens": 300}
         r = requests.post(url, headers=headers, json=data, timeout=30)
         if r.status_code!= 200:
-            print("GROQ STATUS:", r.status_code, r.text)
+            print(f"GROQ STATUS for {sender_id}:", r.status_code, r.text)
             return f"The AI is resting 😅 Error code: {r.status_code}. Please try again {name}."
         return r.json()['choices'][0]['message']['content']
     except Exception as e:
-        print("GROQ EXCEPTION:", e)
+        print(f"GROQ EXCEPTION for {sender_id}:", e)
         return f"The AI had an error 😅 But I'm still here {name}. Try again."
 
 @app.route('/webhook', methods=['GET', 'POST'])
@@ -240,10 +248,10 @@ def webhook():
                                 ai = ask_groq(user_message, sender_id)
                                 send_message(sender_id, ai)
                     except Exception as e:
-                        print("ERROR:", e)
+                        print(f"ERROR for {sender_id}:", e) # BETTER LOG
                         send_message(sender_id, "Error 😅")
                     finally: send_typing(sender_id, "typing_off")
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.27 DB", 200
+def home(): return "StudyBuddy v14.29 DB", 200
