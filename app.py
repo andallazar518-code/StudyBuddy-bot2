@@ -148,13 +148,11 @@ def handle_commands(user_message, sender_id):
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
-    # Only trigger "yes" for affiliate if user was just asked about supplies
-if msg in ["yes", "y"] and user.get('auto_sent') == False and user.get('rejected_affiliate') == False:
-    if user.get('chat_count', 0) % 8 == 0: # para sure na affiliate prompt lang
-        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
-        update_user(sender_id, {"auto_sent": True})
-        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-
+    if msg in ["yes", "y"]:
+       qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
+       update_user(sender_id, {"auto_sent": True})
+       return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+    
     if msg in ["no", "n", "no need", "not now", "pass", "later"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time(), "waiting_for_name": False})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
