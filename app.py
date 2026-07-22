@@ -7,6 +7,7 @@ import re
 from supabase import create_client
 
 app = Flask(__name__)
+
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 VERIFY_TOKEN = "TUBO2026"
@@ -14,37 +15,45 @@ VERIFY_TOKEN = "TUBO2026"
 # = DB SETUP =
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
 user_sessions = {}
+SESSION_COOLDOWN = 1.2
 
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "Struggling with complex math? 📐", "benefit": "Approved for board exams. 552 functions"},
     "notebook": {"name": "National Notebook 80 Leaves", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "Ink keeps bleeding through? 📓", "benefit": "Thick 70gsm paper"},
     "laptop": {"name": "Lenovo Ideapad 3 Laptop", "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9", "hook": "Need a laptop for school & work? 💻", "benefit": "Budget-friendly. Intel i3"},
-    "mouse": {"name": "Wireless Silent Mouse", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Wrist pain from clicking? 🖱️", "benefit": "Ergonomic design. Silent click"},
-    "keyboard": {"name": "RGB Mechanical Keyboard", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Want faster typing? ⌨️", "benefit": "Blue switches. Plug and play"},
-    "headset": {"name": "Gaming Headset with Noise Cancelling Mic", "shopee": "https://s.shopee.ph/30mMqwHnbk?smtt=0.0.9", "hook": "Can't hear clearly in online class? 🎧", "benefit": "Crystal clear mic"},
+    "mouse": {"name": "Wireless Silent Mouse", "shopee": "https://s.shopee.ph/7pKqL9xAbc?smtt=0.0.9", "hook": "Wrist pain from clicking? 🖱️", "benefit": "Ergonomic design. Silent click"},
+    "keyboard": {"name": "RGB Mechanical Keyboard", "shopee": "https://s.shopee.ph/8rLmN2pQrs?smtt=0.0.9", "hook": "Want faster typing? ⌨️", "benefit": "Blue switches. Plug and play"},
+    "headset": {"name": "Gaming Headset with Noise Cancelling Mic", "shopee": "https://s.shopee.ph/4wZxY6vTuv?smtt=0.0.9", "hook": "Can't hear clearly in online class? 🎧", "benefit": "Crystal clear mic"},
     "bag": {"name": "JanSport SuperBreak Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9", "hook": "Bag keeps getting wet? 🎒", "benefit": "Water resistant. 15L capacity"},
     "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Eyes getting tired at night? 💡", "benefit": "3 light modes. Eye protection"},
 }
-
 def get_fb_name(sender_id):
+    if not PAGE_ACCESS_TOKEN: return None
     try:
         url = f"https://graph.facebook.com/v19.0/{sender_id}?fields=first_name&access_token={PAGE_ACCESS_TOKEN}"
         r = requests.get(url, timeout=5)
-        if r.status_code == 200: return r.json().get("first_name", None)
-    except Exception as e: print(f"FB NAME ERROR for {sender_id}:", e)
+        if r.status_code == 200:
+            return r.json().get("first_name", None)
+    except Exception as e:
+        print(f"FB NAME ERROR for {sender_id}:", e)
     return None
 
 def get_user(sender_id):
+    if not supabase:
+        return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False, "conversation_history": [], "last_interest": None}
     try:
         data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
         if data.data:
             user = data.data[0]
-            if not user['name'] or user['name'] == 'Boss':
+            if not user.get('name') or user.get('name') == 'Boss':
                 fb_name = get_fb_name(sender_id)
-                if fb_name: update_user(sender_id, {"name": fb_name}); user['name'] = fb_name
+                if fb_name:
+                    update_user(sender_id, {"name": fb_name})
+                    user['name'] = fb_name
             return user
         else:
             fb_name = get_fb_name(sender_id)
@@ -56,24 +65,34 @@ def get_user(sender_id):
         return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False, "conversation_history": [], "last_interest": None}
 
 def update_user(sender_id, updates):
-    try: supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
-    except Exception as e: print(f"DB UPDATE ERROR for {sender_id}:", e)
+    if not supabase: return
+    try:
+        supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
+    except Exception as e:
+        print(f"DB UPDATE ERROR for {sender_id}:", e)
 
 def send_message(sender_id, text, quick_replies=None):
-    text = text[:2000]
+    if not PAGE_ACCESS_TOKEN: return
+    text = str(text)[:2000]
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
-    try: requests.post(url, json=payload, timeout=10)
-    except Exception as e: print(f"Send error for {sender_id}:", e)
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception as e:
+        print(f"Send error for {sender_id}:", e)
 
 def send_typing(sender_id, action="typing_on"):
+    if not PAGE_ACCESS_TOKEN: return
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-    requests.post(url, json={"recipient": {"id": sender_id}, "sender_action": action}, timeout=5)
+    try:
+        requests.post(url, json={"recipient": {"id": sender_id}, "sender_action": action}, timeout=5)
+    except: pass
 
 def detect_language(text):
     text_lower = text.lower()
-    if "ng" in text_lower or "ba" in text_lower: return "Tagalog"
+    if "ng" in text_lower or "ba" in text_lower or "mo" in text_lower:
+        return "Tagalog"
     return "English"
 
 def should_save_to_memory(msg):
@@ -102,130 +121,95 @@ def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
     user = get_user(sender_id)
 
-    # FB LITE BUG FIX
+    if user.get('reject_time') and time.time() - user['reject_time'] > 86400:
+        update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
+        user = get_user(sender_id)
+
+    new_count = user.get('chat_count', 0) + 1
+    update_user(sender_id, {"chat_count": new_count})
+
     if "@meta ai" in msg or "open link" in msg:
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-
     if msg in ["clear memory", "reset memory"]:
         update_user(sender_id, {"conversation_history": []})
         return "🧠 Memory cleared! Fresh start tayo 😊"
-
-    if user['reject_time']:
-        if time.time() - user['reject_time'] > 86400:
-            update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
-
-    new_count = user['chat_count'] + 1
-    update_user(sender_id, {"chat_count": new_count})
-
     if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in ["help", "menu", "shop", "reset name"]:
         name = user_message.strip().title()
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
-
     if msg.startswith("shopee_"):
         product = msg.replace("shopee_", "")
         if product in PRODUCT_MAP:
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
-
     if msg in ["yes", "y"]:
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
+        update_user(sender_id, {"auto_sent": True})
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-
     if msg in ["no", "n", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time(), "waiting_for_name": False})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
-
     if msg == "reset name":
         update_user(sender_id, {"name": None, "waiting_for_name": True})
         return "👋 Name reset! What's your name?"
-
     if msg.startswith("setname_"):
         name = msg.replace("setname_", "").strip().title()
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
-
     if msg in ["help", "menu", "commands"]:
-        return """📚 **StudyBuddy Commands:**
-`Hi/Hello` - Greet
-`calculator/laptop` - Product recommendation
-`shop` - Store link
-`My name is [name]` - Save name
-`Reset name` - Change name
-`Clear memory` - Reset AI memory
-`Help` - Show this menu"""
-
+        return """📚 **StudyBuddy Commands:**\n`Hi/Hello` - Greet\n`calculator/laptop` - Product\n`shop` - Store link\n`My name is [name]` - Save name\n`Reset name` - Change name\n`Clear memory` - Reset AI memory\n`Help` - Show this menu"""
     if "name is" in msg or "i am" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Welcome {name}! Nice to meet you 😊"
-
     if msg in ["hi", "hello", "hey"]:
-        name = user['name']
-        # BONUS: GREET WITH LAST INTEREST
+        name = user.get('name')
         if user.get('last_interest') and name:
             return f"Hi {name}! 😊 Kamusta yung {user['last_interest']} na chineck mo? Need mo link ulit?"
         if not name:
             qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
             update_user(sender_id, {"waiting_for_name": True})
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
-        return f"**StudyBuddy v14.31 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
-
-    if new_count % 8 == 0 and not user['rejected_affiliate'] and not user['auto_sent']:
-        update_user(sender_id, {"auto_sent": True})
-        qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
-        name = user['name'] or 'there'
-        return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-
+        if new_count % 8 == 0 and not user.get('rejected_affiliate') and not user.get('auto_sent'):
+            update_user(sender_id, {"auto_sent": True})
+            qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
+            return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
+        return f"**StudyBuddy v14.32 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-
-    if not user['rejected_affiliate']:
+    if not user.get('rejected_affiliate'):
         if check_affiliate_intent(msg):
-            update_user(sender_id, {"last_interest": user_message}) # SAVE INTEREST
+            update_user(sender_id, {"last_interest": user_message})
             affiliate_reply = get_affiliate_reply(msg)
             if affiliate_reply: return affiliate_reply
-
     if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
         return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
-    return None # Ibig sabihin pupunta sa AI
+    return None
 
 def ask_groq(user_message, sender_id):
     user = get_user(sender_id)
-    name = user['name'] or "there"
-
+    name = user.get('name') or "there"
     if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
-
-    # 1. KUHA NG HISTORY + SAFETY CHECK
     history = user.get('conversation_history', [])
     if not isinstance(history, list): history = []
-
-    # 2. ADD USER MESSAGE LANG KUNG HINDI COMMAND
     if should_save_to_memory(user_message):
         history.append({"role": "user", "content": user_message})
-
-    # 3. LIMIT TO 10 MESSAGES
     history = history[-10:]
-
-    # 4. BUILD MESSAGES
-    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.31. A friendly AI Assistant from Philippines. Reply in {detect_language(user_message)}. Keep it under 8 sentences. User name: {name}"}]
+    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.32. A friendly AI Assistant from Philippines. Reply in {detect_language(user_message)}. Keep it under 8 sentences. User name: {name}"}]
     messages.extend(history)
-
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 300}
         r = requests.post(url, headers=headers, json=data, timeout=30)
+        r.raise_for_status()
         ai_reply = r.json()['choices'][0]['message']['content']
-
-        # 5. SAVE AI REPLY
         if should_save_to_memory(user_message):
             history.append({"role": "assistant", "content": ai_reply})
             update_user(sender_id, {"conversation_history": history[-10:]})
-
         return ai_reply
     except Exception as e:
         print(f"GROQ EXCEPTION for {sender_id}:", e)
@@ -234,7 +218,8 @@ def ask_groq(user_message, sender_id):
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     if request.method == 'GET':
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN: return request.args.get("hub.challenge"), 200
+        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
+            return request.args.get("hub.challenge"), 200
         return "Error", 403
     if request.method == 'POST':
         data = request.get_json()
@@ -242,14 +227,15 @@ def webhook():
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
                     sender_id = event['sender']['id']
-                    if sender_id in user_sessions and time.time() - user_sessions[sender_id] < 1.2: continue
+                    if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN:
+                        continue
                     user_sessions[sender_id] = time.time()
                     send_typing(sender_id)
                     time.sleep(0.3)
                     try:
                         if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
                             user = get_user(sender_id)
-                            name = user['name'] or 'there'
+                            name = user.get('name') or 'there'
                             send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!")
                             continue
                         if 'message' in event and 'attachments' in event['message']:
@@ -258,16 +244,20 @@ def webhook():
                         if 'message' in event and 'text' in event['message']:
                             user_message = event['message']['text']
                             cmd = handle_commands(user_message, sender_id)
-                            if isinstance(cmd, dict): send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
-                            elif cmd: send_message(sender_id, cmd)
+                            if isinstance(cmd, dict):
+                                send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
+                            elif cmd:
+                                send_message(sender_id, cmd)
                             else:
                                 ai = ask_groq(user_message, sender_id)
                                 send_message(sender_id, ai)
                     except Exception as e:
                         print(f"ERROR for {sender_id}:", e)
                         send_message(sender_id, "Error 😅")
-                    finally: send_typing(sender_id, "typing_off")
+                    finally:
+                        send_typing(sender_id, "typing_off")
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.31 DB", 200
+def home():
+    return "StudyBuddy v14.32 DB", 200
