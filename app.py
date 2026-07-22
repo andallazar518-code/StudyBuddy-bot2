@@ -292,4 +292,4 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.33 EN", 200
+    return "StudyBuddy v14.33", 200
