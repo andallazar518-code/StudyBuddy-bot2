@@ -1,9 +1,12 @@
-from flask import Flask, request
+from flask import Flask, request, abort
 import requests
 import os
 import time
 import random
 import re
+import json
+import hashlib
+import hmac
 from supabase import create_client
 
 app = Flask(__name__)
@@ -11,6 +14,7 @@ app = Flask(__name__)
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 VERIFY_TOKEN = "TUBO2026"
+APP_SECRET = os.environ.get("FB_APP_SECRET") # add this in env for signature check
 
 # = DB SETUP =
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -19,8 +23,8 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABAS
 
 user_sessions = {}
 SESSION_COOLDOWN = 1.2
-
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
+
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "Struggling with complex math? 📐", "benefit": "Approved for board exams. 552 functions"},
     "notebook": {"name": "National Notebook 80 Leaves", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "Ink keeps bleeding through? 📓", "benefit": "Thick 70gsm paper"},
@@ -32,24 +36,41 @@ PRODUCT_MAP = {
     "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Eyes getting tired at night? 💡", "benefit": "3 light modes. Eye protection"},
 }
 
+def verify_signature(req):
+    if not APP_SECRET: return True # skip if not set
+    signature = req.headers.get("X-Hub-Signature-256", "")
+    if not signature: return False
+    hash = hmac.new(APP_SECRET.encode(), req.data, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(f"sha256={hash}", signature)
+
 def get_fb_name(sender_id):
     if not PAGE_ACCESS_TOKEN: return None
     try:
         url = f"https://graph.facebook.com/v19.0/{sender_id}?fields=first_name&access_token={PAGE_ACCESS_TOKEN}"
         r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return r.json().get("first_name", None)
-    except Exception as e:
-        print(f"FB NAME ERROR for {sender_id}:", e)
+        if r.status_code == 200: return r.json().get("first_name")
+    except Exception as e: print(f"FB NAME ERROR for {sender_id}:", e)
     return None
 
+def _load_history(raw):
+    if not raw: return []
+    if isinstance(raw, list): return raw
+    try: return json.loads(raw)
+    except: return []
+
+def _dump_history(hist):
+    return json.dumps(hist[-10:])
+
 def get_user(sender_id):
-    if not supabase:
-        return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False, "conversation_history": [], "last_interest": None}
+    default = {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False,
+               "reject_time": None, "auto_sent": False, "last_promo_time": None, "waiting_for_name": False,
+               "conversation_history": [], "last_interest": None}
+    if not supabase: return default
     try:
         data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
         if data.data:
             user = data.data[0]
+            user['conversation_history'] = _load_history(user.get('conversation_history'))
             if not user.get('name') or user.get('name') == 'Boss':
                 fb_name = get_fb_name(sender_id)
                 if fb_name:
@@ -58,19 +79,20 @@ def get_user(sender_id):
             return user
         else:
             fb_name = get_fb_name(sender_id)
-            new_user = {"sender_id": sender_id, "name": fb_name, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False, "conversation_history": [], "last_interest": None}
-            supabase.table('users').insert(new_user).execute()
+            new_user = default.copy()
+            new_user.update({"name": fb_name})
+            supabase.table('users').insert({**new_user, "conversation_history": _dump_history([])}).execute()
             return new_user
     except Exception as e:
         print(f"DB GET ERROR for {sender_id}:", e)
-        return {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "waiting_for_name": False, "conversation_history": [], "last_interest": None}
+        return default
 
 def update_user(sender_id, updates):
     if not supabase: return
-    try:
-        supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
-    except Exception as e:
-        print(f"DB UPDATE ERROR for {sender_id}:", e)
+    if "conversation_history" in updates:
+        updates["conversation_history"] = _dump_history(updates["conversation_history"])
+    try: supabase.table('users').update(updates).eq("sender_id", sender_id).execute()
+    except Exception as e: print(f"DB UPDATE ERROR for {sender_id}:", e)
 
 def send_message(sender_id, text, quick_replies=None):
     if not PAGE_ACCESS_TOKEN: return
@@ -78,20 +100,14 @@ def send_message(sender_id, text, quick_replies=None):
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
     if quick_replies: payload["message"]["quick_replies"] = quick_replies
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Send error for {sender_id}:", e)
+    try: requests.post(url, json=payload, timeout=10)
+    except Exception as e: print(f"Send error for {sender_id}:", e)
 
 def send_typing(sender_id, action="typing_on"):
     if not PAGE_ACCESS_TOKEN: return
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-    try:
-        requests.post(url, json={"recipient": {"id": sender_id}, "sender_action": action}, timeout=5)
+    try: requests.post(url, json={"recipient": {"id": sender_id}, "sender_action": action}, timeout=5)
     except: pass
-
-def detect_language(text):
-    return "English" # FORCED ENGLISH NOW
 
 def should_save_to_memory(msg):
     skip = ["hi", "hello", "hey", "help", "menu", "shop", "yes", "no", "y", "n", "reset name", "commands"]
@@ -107,7 +123,8 @@ def get_affiliate_reply(msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
-            qr = [{"content_type":"text", "title":"👉 View Item", "payload":f"shopee_{product}"}, {"content_type":"text", "title":"📎 See All", "payload":"shop"}]
+            qr = [{"content_type":"text", "title":"👉 View Item", "payload":f"shopee_{product}"},
+                  {"content_type":"text", "title":"📎 See All", "payload":"shop"}]
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
             return {"text": text, "quick_replies": qr}
     if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
@@ -117,22 +134,25 @@ def get_affiliate_reply(msg):
 
 def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
+    raw_msg = user_message
     user = get_user(sender_id)
 
-    # Reset 24hr rejection
-    if user.get('reject_time') and time.time() - user['reject_time'] > 86400:
+    # Reset 24hr rejection + auto_sent cooldown
+    now = time.time()
+    if user.get('reject_time') and now - user['reject_time'] > 86400:
         update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
         user = get_user(sender_id)
+    if user.get('last_promo_time') and now - user['last_promo_time'] > 86400:
+        update_user(sender_id, {"auto_sent": False})
+        user = get_user(sender_id)
 
-    # Increment chat count
     new_count = user.get('chat_count', 0) + 1
     update_user(sender_id, {"chat_count": new_count})
 
-    if "@meta ai" in msg or "open link" in msg:
+    if "@meta ai" in raw_msg.lower() or "open link" in msg:
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
 
-    # FIXED: Clear last_interest too
     if msg in ["clear memory", "reset memory"]:
         update_user(sender_id, {"conversation_history": [], "last_interest": None})
         return "🧠 Memory cleared! Fresh start 😊"
@@ -149,12 +169,12 @@ def handle_commands(user_message, sender_id):
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
 
     if msg in ["yes", "y"]:
-       qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
-       update_user(sender_id, {"auto_sent": True})
-       return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-    
+        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
+        update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
+        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+
     if msg in ["no", "n", "no need", "not now", "pass", "later"]:
-        update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time(), "waiting_for_name": False})
+        update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "waiting_for_name": False})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
 
     if msg == "reset name":
@@ -162,7 +182,8 @@ def handle_commands(user_message, sender_id):
         return "👋 Name reset! What's your name?"
 
     if msg.startswith("setname_"):
-        name = msg.replace("setname_", "").strip().title()
+        fb_name = get_fb_name(sender_id) # FIXED: actually get real FB name
+        name = fb_name or "Friend"
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
 
@@ -183,9 +204,8 @@ def handle_commands(user_message, sender_id):
 
     if msg in ["hi", "hello", "hey"]:
         name = user.get('name')
-        # FIXED: Only greet with last_interest if it's a valid product
         if user.get('last_interest') and name:
-            last = user['last_interest'].lower()
+            last = str(user['last_interest']).lower()
             if any(p in last for p in PRODUCT_MAP.keys()):
                 return f"Hi {name}! 😊 How is the {user['last_interest']} you checked? Need the link again?"
         if not name:
@@ -195,11 +215,10 @@ def handle_commands(user_message, sender_id):
 
         # Auto promo every 8 chats
         if new_count % 8 == 0 and not user.get('rejected_affiliate') and not user.get('auto_sent'):
-            update_user(sender_id, {"auto_sent": True})
+            update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
             qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
             return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-
-        return f"**StudyBuddy v14.33 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+        return f"**StudyBuddy v14.34 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
@@ -210,10 +229,8 @@ def handle_commands(user_message, sender_id):
             update_user(sender_id, {"last_interest": user_message})
             affiliate_reply = get_affiliate_reply(msg)
             if affiliate_reply: return affiliate_reply
-
     if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
         return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
-
     return None
 
 def ask_groq(user_message, sender_id):
@@ -221,16 +238,10 @@ def ask_groq(user_message, sender_id):
     name = user.get('name') or "there"
     if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
-
     history = user.get('conversation_history', [])
-    if not isinstance(history, list): history = []
-    if should_save_to_memory(user_message):
-        history.append({"role": "user", "content": user_message})
-    history = history[-10:]
-
-    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.33 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
-    messages.extend(history)
-
+    if should_save_to_memory(user_message): history.append({"role": "user", "content": user_message})
+    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.34 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
+    messages.extend(history[-10:])
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -238,10 +249,9 @@ def ask_groq(user_message, sender_id):
         r = requests.post(url, headers=headers, json=data, timeout=30)
         r.raise_for_status()
         ai_reply = r.json()['choices'][0]['message']['content']
-
         if should_save_to_memory(user_message):
             history.append({"role": "assistant", "content": ai_reply})
-            update_user(sender_id, {"conversation_history": history[-10:]})
+            update_user(sender_id, {"conversation_history": history})
         return ai_reply
     except Exception as e:
         print(f"GROQ EXCEPTION for {sender_id}:", e)
@@ -254,16 +264,15 @@ def webhook():
             return request.args.get("hub.challenge"), 200
         return "Error", 403
     if request.method == 'POST':
+        if not verify_signature(request): abort(403) # SECURITY
         data = request.get_json()
         if data.get('object') == 'page':
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
                     sender_id = event['sender']['id']
-                    if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN:
-                        continue
+                    if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN: continue
                     user_sessions[sender_id] = time.time()
                     send_typing(sender_id)
-                    time.sleep(0.3)
                     try:
                         if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
                             user = get_user(sender_id)
@@ -276,20 +285,16 @@ def webhook():
                         if 'message' in event and 'text' in event['message']:
                             user_message = event['message']['text']
                             cmd = handle_commands(user_message, sender_id)
-                            if isinstance(cmd, dict):
-                                send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
-                            elif cmd:
-                                send_message(sender_id, cmd)
+                            if isinstance(cmd, dict): send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
+                            elif cmd: send_message(sender_id, cmd)
                             else:
                                 ai = ask_groq(user_message, sender_id)
                                 send_message(sender_id, ai)
                     except Exception as e:
                         print(f"ERROR for {sender_id}:", e)
                         send_message(sender_id, "Error 😅")
-                    finally:
-                        send_typing(sender_id, "typing_off")
+                    finally: send_typing(sender_id, "typing_off")
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home():
-    return "StudyBuddy v14.33", 200
+def home(): return "StudyBuddy v14.34", 200
