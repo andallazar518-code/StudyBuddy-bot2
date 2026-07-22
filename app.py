@@ -31,6 +31,7 @@ PRODUCT_MAP = {
     "bag": {"name": "JanSport SuperBreak Backpack", "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9", "hook": "Bag keeps getting wet? 🎒", "benefit": "Water resistant. 15L capacity"},
     "lamp": {"name": "LED Desk Study Lamp with USB", "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9", "hook": "Eyes getting tired at night? 💡", "benefit": "3 light modes. Eye protection"},
 }
+
 def get_fb_name(sender_id):
     if not PAGE_ACCESS_TOKEN: return None
     try:
@@ -90,10 +91,7 @@ def send_typing(sender_id, action="typing_on"):
     except: pass
 
 def detect_language(text):
-    text_lower = text.lower()
-    if "ng" in text_lower or "ba" in text_lower or "mo" in text_lower:
-        return "Tagalog"
-    return "English"
+    return "English" # FORCED ENGLISH NOW
 
 def should_save_to_memory(msg):
     skip = ["hi", "hello", "hey", "help", "menu", "shop", "yes", "no", "y", "n", "reset name", "commands"]
@@ -121,71 +119,101 @@ def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
     user = get_user(sender_id)
 
+    # Reset 24hr rejection
     if user.get('reject_time') and time.time() - user['reject_time'] > 86400:
         update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
         user = get_user(sender_id)
 
+    # Increment chat count
     new_count = user.get('chat_count', 0) + 1
     update_user(sender_id, {"chat_count": new_count})
 
     if "@meta ai" in msg or "open link" in msg:
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+
+    # FIXED: Clear last_interest too
     if msg in ["clear memory", "reset memory"]:
-        update_user(sender_id, {"conversation_history": []})
-        return "🧠 Memory cleared! Fresh start tayo 😊"
+        update_user(sender_id, {"conversation_history": [], "last_interest": None})
+        return "🧠 Memory cleared! Fresh start 😊"
+
     if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in ["help", "menu", "shop", "reset name"]:
         name = user_message.strip().title()
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
+
     if msg.startswith("shopee_"):
         product = msg.replace("shopee_", "")
         if product in PRODUCT_MAP:
             p = PRODUCT_MAP[product]
             return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
+
     if msg in ["yes", "y"]:
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         update_user(sender_id, {"auto_sent": True})
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-    if msg in ["no", "n", "no need", "hindi", "ayaw", "later", "not now", "pass"]:
+
+    if msg in ["no", "n", "no need", "not now", "pass", "later"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": time.time(), "waiting_for_name": False})
         return "Got it! 😊 I'll stop asking about supplies for 24 hours."
+
     if msg == "reset name":
         update_user(sender_id, {"name": None, "waiting_for_name": True})
         return "👋 Name reset! What's your name?"
+
     if msg.startswith("setname_"):
         name = msg.replace("setname_", "").strip().title()
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
+
     if msg in ["help", "menu", "commands"]:
-        return """📚 **StudyBuddy Commands:**\n`Hi/Hello` - Greet\n`calculator/laptop` - Product\n`shop` - Store link\n`My name is [name]` - Save name\n`Reset name` - Change name\n`Clear memory` - Reset AI memory\n`Help` - Show this menu"""
+        return """📚 **StudyBuddy Commands:**
+`Hi/Hello` - Greet
+`calculator/laptop` - Product recommendation
+`shop` - Store link
+`My name is [name]` - Save name
+`Reset name` - Change name
+`Clear memory` - Reset AI memory
+`Help` - Show this menu"""
+
     if "name is" in msg or "i am" in msg:
         name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Welcome {name}! Nice to meet you 😊"
+
     if msg in ["hi", "hello", "hey"]:
         name = user.get('name')
+        # FIXED: Only greet with last_interest if it's a valid product
         if user.get('last_interest') and name:
-            return f"Hi {name}! 😊 Kamusta yung {user['last_interest']} na chineck mo? Need mo link ulit?"
+            last = user['last_interest'].lower()
+            if any(p in last for p in PRODUCT_MAP.keys()):
+                return f"Hi {name}! 😊 How is the {user['last_interest']} you checked? Need the link again?"
         if not name:
             qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
             update_user(sender_id, {"waiting_for_name": True})
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
+
+        # Auto promo every 8 chats
         if new_count % 8 == 0 and not user.get('rejected_affiliate') and not user.get('auto_sent'):
             update_user(sender_id, {"auto_sent": True})
             qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
             return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-        return f"**StudyBuddy v14.32 DB** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+
+        return f"**StudyBuddy v14.33 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+
     if msg == "shop":
         qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
         return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+
     if not user.get('rejected_affiliate'):
         if check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
             affiliate_reply = get_affiliate_reply(msg)
             if affiliate_reply: return affiliate_reply
+
     if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
         return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
+
     return None
 
 def ask_groq(user_message, sender_id):
@@ -193,13 +221,16 @@ def ask_groq(user_message, sender_id):
     name = user.get('name') or "there"
     if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
+
     history = user.get('conversation_history', [])
     if not isinstance(history, list): history = []
     if should_save_to_memory(user_message):
         history.append({"role": "user", "content": user_message})
     history = history[-10:]
-    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.32. A friendly AI Assistant from Philippines. Reply in {detect_language(user_message)}. Keep it under 8 sentences. User name: {name}"}]
+
+    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.33 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
     messages.extend(history)
+
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -207,6 +238,7 @@ def ask_groq(user_message, sender_id):
         r = requests.post(url, headers=headers, json=data, timeout=30)
         r.raise_for_status()
         ai_reply = r.json()['choices'][0]['message']['content']
+
         if should_save_to_memory(user_message):
             history.append({"role": "assistant", "content": ai_reply})
             update_user(sender_id, {"conversation_history": history[-10:]})
@@ -260,4 +292,4 @@ def webhook():
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.32 DB", 200
+    return "StudyBuddy v14.33 EN", 200
