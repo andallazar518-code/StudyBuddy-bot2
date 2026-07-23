@@ -211,8 +211,7 @@ def send_product_carousel(sender_id):
             "title": p['name'][:80],
             "subtitle": p['hook'][:80],
             "buttons": [
-                {"type": "web_url", "url": tracked_link, "title": "👉 Buy Now"},
-                {"type": "postback", "title": "🔍 Details", "payload": f"details_{product}"[:1000]}
+                {"type": "web_url", "url": tracked_link, "title": "👉 Buy Now"}
             ]
         })
     if not elements:
@@ -250,14 +249,6 @@ def should_save_to_memory(msg):
     skip = ["hi", "hello", "hey", "help", "menu", "shop", "yes", "no", "y", "n", "reset name", "commands"]
     return msg.lower().strip() not in skip
 
-def check_affiliate_intent(msg):
-    msg = msg.lower()
-    product_words = list(PRODUCT_MAP.keys())
-    buy_words = ["buy", "shop", "shopee", "price", "link", "gear", "order", "store"]
-    if msg in ["yes", "y", "no", "n"]:
-        return False
-    return any(w in msg for w in product_words) or any(w in msg for w in buy_words)
-
 def get_affiliate_reply(sender_id, msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
@@ -265,9 +256,7 @@ def get_affiliate_reply(sender_id, msg):
             tracked_link = get_tracked_link(p['shopee'], sender_id, product)
             text = f"💡 {p['name']}\n\n{p['hook']}\n\n✅ Why students like it: {p['benefit']}\n\n*Disclosure: Affiliate link*"
             buttons = [
-                {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"},
-                {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"[:1000]},
-                {"type": "postback", "title": "📎 See All", "payload": "shop"}
+                {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}
             ]
             send_button_template(sender_id, text, buttons)
             return True
@@ -307,6 +296,7 @@ def handle_commands(user_message, sender_id):
         user = get_user(sender_id)
 
         now = time.time()
+        # Reset 24h restrictions
         if user.get('reject_time') and now - user['reject_time'] > 86400:
             update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None, "last_promo_time": None})
             user = get_user(sender_id)
@@ -315,6 +305,7 @@ def handle_commands(user_message, sender_id):
             update_user(sender_id, {"auto_sent": False})
             user = get_user(sender_id)
 
+        # Track message count
         skip_count = ["hi","hello","hey","help","menu","shop","yes","no","y","n","reset name","commands","clear memory"]
         new_count = user.get('chat_count', 0) + 1 if msg not in skip_count else user.get('chat_count', 0)
         update_user(sender_id, {"chat_count": new_count})
@@ -327,7 +318,7 @@ def handle_commands(user_message, sender_id):
             return None
 
         if msg in ["clear memory", "reset memory"]:
-            update_user(sender_id, {"conversation_history": [], "last_interest": None})
+            update_user(sender_id, {"conversation_history": [], "last_interest": None, "chat_count": 0, "auto_sent": False})
             return "🧠 Memory cleared! Fresh start 😊"
 
         if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in skip_count:
@@ -369,6 +360,15 @@ def handle_commands(user_message, sender_id):
             updated_hist = history + [{"role": "user", "content": user_message}, {"role": "assistant", "content": reply}]
             update_user(sender_id, {"conversation_history": updated_hist[-10:]})
 
+        # AUTO-SEND AFFILIATE CAROUSEL AFTER 8 MESSAGES
+        if new_count >= 8 and not user.get('auto_sent') and not user.get('rejected_affiliate'):
+            update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
+            send_message(sender_id, reply)
+            time.sleep(1)
+            send_message(sender_id, "📚 By the way, check out these top-rated student study essentials!")
+            send_product_carousel(sender_id)
+            return None
+
         return reply
 
     except Exception as e:
@@ -401,10 +401,8 @@ def webhook():
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event["sender"]["id"]
 
-                # Trigger typing indicator bubble
                 send_typing(sender_id, "typing_on")
 
-                # 1. Handle regular text messages
                 if "message" in messaging_event and "text" in messaging_event["message"]:
                     user_message = messaging_event["message"]["text"]
 
@@ -419,28 +417,11 @@ def webhook():
                     finally:
                         user_sessions.pop(sender_id, None)
 
-                # 2. Handle button postbacks (Price Tips, See All, Details, etc.)
                 elif "postback" in messaging_event:
                     payload = messaging_event["postback"].get("payload", "")
 
                     if payload == "shop":
                         send_product_carousel(sender_id)
-
-                    elif payload.startswith("compare_"):
-                        product_key = payload.replace("compare_", "")
-                        if product_key in PRODUCT_MAP:
-                            prod = PRODUCT_MAP[product_key]
-                            tip_msg = (
-                                f"💡 *Price Tip for {prod['name']}*:\n\n"
-                                f"Check Shopee Mall daily vouchers or monthly mega sales (e.g., 3.3 / 11.11)! "
-                                f"Stack shop vouchers with Shopee Pay discount vouchers at checkout for the maximum discount."
-                            )
-                            send_message(sender_id, tip_msg)
-
-                    elif payload.startswith("details_"):
-                        product_key = payload.replace("details_", "")
-                        if product_key in PRODUCT_MAP:
-                            get_affiliate_reply(sender_id, product_key)
 
     return "EVENT_RECEIVED", 200
 
