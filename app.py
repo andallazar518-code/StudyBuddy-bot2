@@ -305,7 +305,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
 
   effective_payload = quick_reply_payload
   if not effective_payload:
-    # Sinusuri rin natin ang text at qr_text para hindi pumasok sa AI kapag quick reply ang pinindot
     combined_check = f"{text_lower} {qr_text_lower}"
     if "shop" in combined_check:
       effective_payload = "shop"
@@ -396,10 +395,18 @@ def handle_postback(sender_id, payload):
 
   if payload == "shop":
     tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
+    
+    # Custom interactive shop display featuring top student products
+    shop_message = "🛍️ Welcome to StudyBuddy Shop!\n\nHere are some of our top recommended school supplies with exclusive vouchers:\n\n"
+    for key, prod in list(PRODUCT_MAP.items())[:4]: # Pwedeng ilista ang top 4 products
+      p_link = get_tracked_link(prod["shopee"], sender_id, key)
+      shop_message += f"• {prod['name']}\n  {prod['benefit']}!\n  👉 {p_link}\n\n"
+    
+    shop_message += f"📦 Browse all items and claim more vouchers at our main store here:\n{tracked_store_url}"
+    
     send_message(
         sender_id,
-        "Check out our main store and vouchers here:"
-        f" {tracked_store_url}",
+        shop_message,
         quick_replies=current_qr,
     )
   elif payload == "set_name":
@@ -452,7 +459,6 @@ def webhook():
               msg = messaging["message"]
               text = msg.get("text", "")
               qr_payload = msg.get("quick_reply", {}).get("payload")
-              # Kinukuha rin natin ang title kung sakaling plain text ang pasa ng quick reply
               qr_text = msg.get("text", "") if qr_payload else ""
               if text or qr_payload:
                 handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload, qr_text=qr_text)
