@@ -91,8 +91,13 @@ def get_tracked_link(base_url, sender_id, product="store"):
   return f"{base_url}{separator}{tracker}"
 
 
-def get_dynamic_shopee_search_link(search_query, sender_id):
-  formatted_query = search_query.strip().replace(" ", "%20")
+def get_dynamic_shopee_search_link(user_message, sender_id):
+  stop_words = ["nag", "hahanap", "ako", "ng", "gusto", "kong", "bumili", "meron", "ka", "bang", "mga", "search", "sa", "po", "ba", "yung"]
+  words = user_message.lower().split()
+  filtered_words = [w for w in words if w not in stop_words]
+  
+  query = " ".join(filtered_words) if filtered_words else user_message
+  formatted_query = query.strip().replace(" ", "%20")
   base_search_url = f"https://s.shopee.ph/search?keyword={formatted_query}"
   return get_tracked_link(base_search_url, sender_id, "dynamic_search")
 
@@ -380,7 +385,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
         f"👉 Check it here: {tracked_url}"
     )
   elif any(word in text_lower for word in ["buy", "search", "magkano", "price", "kano", "hanap", "pwede", "meron", "shop", "order"]):
-    # Kung naghahanap ng item pero walang sakto sa PRODUCT_MAP, gagawa ng dynamic search link
     search_tracked_url = get_dynamic_shopee_search_link(text, sender_id)
     bot_reply += (
         f"\n\n🔍 I couldn't find that exact item in our featured list, but you can search and check it here with our vouchers:\n"
