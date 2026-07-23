@@ -287,9 +287,10 @@ def call_groq_api(messages):
   )
 
 
-def handle_incoming_message(sender_id, text, quick_reply_payload=None):
+def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
   user = get_user(sender_id)
   text_lower = text.strip().lower()
+  qr_text_lower = qr_text.strip().lower()
 
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
@@ -304,13 +305,15 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None):
 
   effective_payload = quick_reply_payload
   if not effective_payload:
-    if text_lower in ["🛒 shop", "shop"]:
+    # Sinusuri rin natin ang text at qr_text para hindi pumasok sa AI kapag quick reply ang pinindot
+    combined_check = f"{text_lower} {qr_text_lower}"
+    if "shop" in combined_check:
       effective_payload = "shop"
-    elif text_lower in ["📝 set name", "set name", "set_name"]:
+    elif "set name" in combined_check or "set_name" in combined_check:
       effective_payload = "set_name"
-    elif text_lower in ["🧠 clear memory", "clear memory", "clear_memory"]:
+    elif "clear memory" in combined_check or "clear_memory" in combined_check:
       effective_payload = "clear_memory"
-    elif text_lower in ["❓ help", "help"]:
+    elif "help" in combined_check:
       effective_payload = "help"
 
   if effective_payload:
@@ -449,8 +452,10 @@ def webhook():
               msg = messaging["message"]
               text = msg.get("text", "")
               qr_payload = msg.get("quick_reply", {}).get("payload")
+              # Kinukuha rin natin ang title kung sakaling plain text ang pasa ng quick reply
+              qr_text = msg.get("text", "") if qr_payload else ""
               if text or qr_payload:
-                handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload)
+                handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload, qr_text=qr_text)
             elif messaging.get("postback"):
               payload = messaging["postback"].get("payload")
               if payload:
