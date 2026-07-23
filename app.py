@@ -20,6 +20,7 @@ SESSION_COOLDOWN = 1.2
 AFFILIATE_ID = "studybuddy"
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 
+# FIX 1: Cleaned out invalid ![emoji] image markup so raw text isn't sent to FB Messenger
 PRODUCT_MAP = {
     "calculator": {"name": "Casio fx-991EX Scientific Calculator", "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9", "hook": "Struggling with complex math? 📐", "benefit": "Approved for board exams. 552 functions"},
     "notebook": {"name": "National Notebook 80 Leaves", "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9", "hook": "Ink keeps bleeding through? 📓", "benefit": "Thick 70gsm paper"},
@@ -67,6 +68,7 @@ def _dump_history(hist):
         trimmed.append(m_copy)
     return json.dumps(trimmed)
 
+# FIX 4: Upsert to prevent duplicate insert race conditions
 def get_user(sender_id):
     default = {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False, "reject_time": None, "auto_sent": False, "last_promo_time": None, "waiting_for_name": False, "conversation_history": [], "last_interest": None, "last_bot_action": None}
     if not supabase: return default
@@ -82,7 +84,7 @@ def get_user(sender_id):
         else:
             fb_name = get_fb_name(sender_id)
             new_user = default.copy(); new_user.update({"name": fb_name})
-            supabase.table('users').insert({**new_user, "conversation_history": _dump_history([])}).execute()
+            supabase.table('users').upsert({**new_user, "conversation_history": _dump_history([])}, on_conflict="sender_id").execute()
             return new_user
     except Exception as e: print(f"DB GET ERROR for {sender_id}:", e); return default
 
@@ -108,11 +110,11 @@ def send_button_template(sender_id, text, buttons):
     try: requests.post(url, json=payload, timeout=10)
     except Exception as e: print(f"Button send error:", e)
 
-# NEW: Send carousel of recommended products
+# FIX 3: Safety fallback if product list is empty
 def send_product_carousel(sender_id):
     if not PAGE_ACCESS_TOKEN: return
     elements = []
-    for product, p in list(PRODUCT_MAP.items())[:4]: # show first 4 products
+    for product, p in list(PRODUCT_MAP.items())[:4]:
         tracked_link = get_tracked_link(p['shopee'], sender_id, product)
         elements.append({
             "title": p['name'],
@@ -122,6 +124,10 @@ def send_product_carousel(sender_id):
                 {"type": "postback", "title": "🔍 Details", "payload": f"details_{product}"}
             ]
         })
+    if not elements:
+        send_message(sender_id, "No products available right now!")
+        return
+
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
         "recipient": {"id": sender_id},
@@ -197,7 +203,6 @@ def handle_commands(user_message, sender_id):
         if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in skip_count:
             name = user_message.strip().title(); update_user(sender_id, {"name": name, "waiting_for_name": False}); return f"👋 Nice to meet you {name}! Got it saved 😊"
         
-        # FIX 1: Correctly indented shopee_ handler
         if msg.startswith("shopee_"):
             product = msg.replace("shopee_", "")
             if product in PRODUCT_MAP:
@@ -207,17 +212,14 @@ def handle_commands(user_message, sender_id):
                 update_user(sender_id, {"last_interest": product})
             return None
         
-        # FIX 2: Correctly nested promo "yes" block inside "yes" conditional
         if msg in ["yes", "y"]:
-            # NEW: If user says yes to "Need the link again?"
             if user.get('last_interest') and user.get('last_bot_action') != "asked_promo":
                 last_product = str(user['last_interest']).lower()
                 for product in PRODUCT_MAP.keys():
                     if product in last_product:
-                        get_affiliate_reply(sender_id, product) # resend the card
+                        get_affiliate_reply(sender_id, product)
                         return None
 
-            # OLD: This is for promo "yes"
             if user.get('last_bot_action') == "asked_promo":
                 if user.get('rejected_affiliate'): update_user(sender_id, {"last_bot_action": None}); return "No problem! 😊 I won't send store links until the 24 hours are up."
                 update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": None})
@@ -237,7 +239,6 @@ def handle_commands(user_message, sender_id):
             name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
             update_user(sender_id, {"name": name, "waiting_for_name": False}); return f"👋 Welcome {name}! Nice to meet you 😊"
         
-        # UPDATED: shop now shows carousel
         if msg == "shop" or msg == "recommend":
             if user.get('rejected_affiliate'): return "Got it! 😊 I'll stop asking about supplies for 24 hours. Type `help` for other commands."
             send_message(sender_id, "🛒 **Here are my top student picks for you:**")
@@ -270,6 +271,7 @@ def handle_commands(user_message, sender_id):
         return "Oops I crashed 😅 Try typing again"
     return None
 
+# FIX 2: Added status_code check on Groq response before parsing json
 def ask_groq(user_message, sender_id):
     try:
         user = get_user(sender_id); name = user.get('name') or "there"
@@ -281,11 +283,18 @@ def ask_groq(user_message, sender_id):
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 300}
-        r = requests.post(url, headers=headers, json=data, timeout=45); r.raise_for_status()
-        ai_reply = r.json()['choices'][0]['message']['content']
-        if should_save_to_memory(user_message): history.append({"role": "assistant", "content": ai_reply}); update_user(sender_id, {"conversation_history": history})
-        return ai_reply
-    except Exception as e: print(f"GROQ EXCEPTION for {sender_id}:", e); return f"The AI had an error 😅 But I'm still here {name}. Try again."
+        r = requests.post(url, headers=headers, json=data, timeout=45)
+        
+        if r.status_code == 200:
+            ai_reply = r.json()['choices'][0]['message']['content']
+            if should_save_to_memory(user_message): history.append({"role": "assistant", "content": ai_reply}); update_user(sender_id, {"conversation_history": history})
+            return ai_reply
+        else:
+            print(f"GROQ API HTTP ERROR {r.status_code}: {r.text}")
+            return f"The AI service is temporarily busy 😅 But I'm still here {name}. Try again in a moment!"
+    except Exception as e: 
+        print(f"GROQ EXCEPTION for {sender_id}:", e)
+        return f"The AI had an error 😅 But I'm still here {name}. Try again."
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -312,7 +321,6 @@ def webhook():
                                 user = get_user(sender_id); name = user.get('name') or 'there'
                                 send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!"); continue
 
-                            # NEW: Handle carousel details click
                             if payload.startswith("details_"):
                                 product = payload.replace("details_", "")
                                 if product in PRODUCT_MAP:
