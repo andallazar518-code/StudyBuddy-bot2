@@ -169,7 +169,7 @@ def _load_history(raw):
 
 def _dump_history(hist):
   trimmed = []
-  for m in hist[-8:]:
+  for m in hist[-10:]:
     m_copy = {
         "role": m.get("role", "user"),
         "content": str(m.get("content", ""))[:500],
@@ -427,7 +427,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
     exact_result = num1 * num2
     bot_reply = f"{text.strip()} = {exact_result:,}"
   else:
-    ai_messages = [system_prompt] + history[-3:]
+    ai_messages = [system_prompt] + history[-10:]
     bot_reply = call_groq_api(ai_messages)
 
   if matched_product:
