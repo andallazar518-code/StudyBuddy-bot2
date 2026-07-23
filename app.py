@@ -197,15 +197,26 @@ def handle_commands(user_message, sender_id):
         new_count = user.get('chat_count', 0) + 1 if msg not in skip_count else user.get('chat_count', 0)
         update_user(sender_id, {"chat_count": new_count})
 
-        if msg in ["set_name", "set name"]:
+        # FIXED SET NAME COMMAND
+        if msg in ["set_name", "set name", "change name", "name"]:
             fb_name = get_fb_name(sender_id)
             if fb_name:
                 update_user(sender_id, {"name": fb_name})
                 return f"👋 Name updated to {fb_name}! Saved na 😊"
-            return "Can't get name from FB. Check permissions."
+            update_user(sender_id, {"waiting_for_name": True})
+            return "Sige ano name mo? Type mo lang dito 👇"
+
+        if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in skip_count:
+            name = user_message.strip().title()
+            update_user(sender_id, {"name": name, "waiting_for_name": False})
+            return f"👋 Nice to meet you {name}! Got it saved 😊"
 
         if msg in ["help"]:
-            return """📚 **StudyBuddy Commands:**\n`Shop` - Browse products\n`Set Name` - Update name from FB\n`Clear Memory` - Reset AI\n`calculator/laptop` - Product info"""
+            return """📚 **StudyBuddy Commands:**
+`Shop` - Browse products
+`Set Name` - Update name from FB
+`Clear Memory` - Reset AI
+`calculator/laptop` - Product info"""
 
         if msg in ["clear memory", "reset memory", "clear_memory"]:
             update_user(sender_id, {"conversation_history": [], "last_interest": None, "chat_count": 0, "auto_sent": False})
