@@ -186,6 +186,13 @@ def handle_commands(user_message, sender_id):
         user = get_user(sender_id)
         now = time.time()
 
+        # ALWAYS ON QUICK REPLIES
+        base_qr = [
+            {"content_type":"text", "title":"🛒 Shop", "payload":"shop"},
+            {"content_type":"text", "title":"🧠 Clear Memory", "payload":"clear_memory"},
+            {"content_type":"text", "title":"📝 Set Name", "payload":"set_name"}
+        ]
+
         if user.get('reject_time') and now - user['reject_time'] > 86400:
             update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None, "last_promo_time": None})
             user = get_user(sender_id)
@@ -197,40 +204,47 @@ def handle_commands(user_message, sender_id):
         new_count = user.get('chat_count', 0) + 1 if msg not in skip_count else user.get('chat_count', 0)
         update_user(sender_id, {"chat_count": new_count})
 
-        # FIXED: ENGLISH SET NAME COMMAND
+        # ENGLISH SET NAME COMMAND
         if msg in ["set_name", "set name", "change name", "my name is"]:
             fb_name = get_fb_name(sender_id)
             if fb_name:
                 update_user(sender_id, {"name": fb_name})
-                return f"👋 Got it! Your name is now {fb_name}. Saved! 😊"
+                send_message(sender_id, f"👋 Got it! Your name is now {fb_name}. Saved! 😊", base_qr)
+                return
             update_user(sender_id, {"waiting_for_name": True})
-            return "I couldn't get your name from Facebook 😅 Please type your name here:"
+            send_message(sender_id, "I couldn't get your name from Facebook 😅 Please type your name here:", base_qr)
+            return
 
         if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in skip_count:
             name = user_message.strip().title()
             update_user(sender_id, {"name": name, "waiting_for_name": False})
-            return f"👋 Nice to meet you {name}! I've saved it 😊"
+            send_message(sender_id, f"👋 Nice to meet you {name}! I've saved it 😊", base_qr)
+            return
 
         if msg in ["help"]:
-            return """📚 **StudyBuddy Commands:**
+            send_message(sender_id, """📚 **StudyBuddy Commands:**
 `Shop` - Browse products
 `Set Name` - Update your name
 `Clear Memory` - Reset AI memory
-`calculator` / `laptop` - Get product info"""
+`calculator` / `laptop` - Get product info""", base_qr)
+            return
 
         if msg in ["clear memory", "reset memory", "clear_memory"]:
             update_user(sender_id, {"conversation_history": [], "last_interest": None, "chat_count": 0, "auto_sent": False})
-            return "🧠 Memory cleared! Fresh start 😊"
+            send_message(sender_id, "🧠 Memory cleared! Fresh start 😊", base_qr)
+            return
 
-        # FIXED: Ignore @Meta AI so it won't trigger shop
         if "@meta ai" in raw_msg.lower():
-            return "You can just type `set name` directly 😊 No need to tag @Meta AI"
+            send_message(sender_id, "You can just type `set name` directly 😊 No need to tag @Meta AI", base_qr)
+            return
 
         if "open link" in msg:
-            if user.get('rejected_affiliate'): return "Got it! 😊 I'll stop asking about supplies for 24 hours."
+            if user.get('rejected_affiliate'):
+                send_message(sender_id, "Got it! 😊 I'll stop asking about supplies for 24 hours.", base_qr)
+                return
             tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "openlink")
             send_button_template(sender_id, "🛒 Here's my student essentials store:\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
-            return None
+            return
 
         if msg.startswith("shopee_"):
             product = msg.replace("shopee_", "")
@@ -238,38 +252,36 @@ def handle_commands(user_message, sender_id):
                 p = PRODUCT_MAP[product]
                 tracked_link = get_tracked_link(p['shopee'], sender_id, product)
                 send_button_template(sender_id, f"👉 {p['name']}\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}])
-            return None
+            return
 
         if msg in ["shop", "store", "essentials"]:
             send_product_carousel(sender_id)
-            return None
+            return
 
         if msg in ["hi", "hello", "hey"]:
             user_name = user.get('name')
             greeting = f"Hello {user_name}! 👋" if user_name else "Hello! 👋"
-            qr = [
-                {"content_type":"text", "title":"🛒 Shop", "payload":"shop"},
-                {"content_type":"text", "title":"📝 Set Name", "payload":"set_name"},
-                {"content_type":"text", "title":"🧠 Clear Memory", "payload":"clear_memory"}
-            ]
             if new_count >= 8 and not user.get('auto_sent') and not user.get('rejected_affiliate'):
                 update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": "asked_promo"})
-                return {"text": f"{greeting}\n\n📚 Need school supplies? I have vouchers.\n\nWant it?", "quick_replies": qr + [{"content_type":"text", "title":"✅ Yes", "payload":"yes"}, {"content_type":"text", "title":"❌ No", "payload":"no"}]}
-            return {"text": f"{greeting} I'm StudyBuddy AI! How can I help you today?", "quick_replies": qr}
+                send_message(sender_id, f"{greeting}\n\n📚 Need school supplies? I have vouchers.\n\nWant it?", base_qr + [{"content_type":"text", "title":"✅ Yes", "payload":"yes"}, {"content_type":"text", "title":"❌ No", "payload":"no"}])
+                return
+            send_message(sender_id, f"{greeting} I'm StudyBuddy AI! How can I help you today?", base_qr)
+            return
 
         if msg in ["yes", "y"]:
             if user.get('last_bot_action') == "asked_promo":
                 tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "promo")
                 send_button_template(sender_id, "🛒 Here's my student essentials store:\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
                 update_user(sender_id, {"last_bot_action": None})
-                return None
+                return
         if msg in ["no", "n"]:
             if user.get('last_bot_action') == "asked_promo":
                 update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "last_bot_action": None})
-                return "Got it! 😊 I'll stop asking for 24 hours."
+                send_message(sender_id, "Got it! 😊 I'll stop asking for 24 hours.", base_qr)
+                return
 
         if get_affiliate_reply(sender_id, msg):
-            return None
+            return
 
         history = user.get('conversation_history', [])
         system_prompt = {"role": "system", "content": f"You are StudyBuddy AI, a friendly Philippine student assistant. Speak warm, conversational English with light Taglish. User name: {user.get('name') or 'Friend'}."}
@@ -278,10 +290,15 @@ def handle_commands(user_message, sender_id):
         if should_save_to_memory(user_message):
             updated_hist = history + [{"role": "user", "content": user_message}, {"role": "assistant", "content": reply}]
             update_user(sender_id, {"conversation_history": updated_hist[-10:]})
-        return reply
+
+        # ALWAYS SEND QUICK REPLIES WITH GROQ REPLY
+        send_message(sender_id, reply, base_qr)
+        return
+
     except Exception as e:
         print("Error in handle_commands:", e)
-        return "Oops, something went wrong processing that request!"
+        send_message(sender_id, "Oops, something went wrong processing that request!", base_qr)
+        return
 
 @app.route('/', methods=['GET'])
 def home(): return "StudyBuddy Bot is live and running!", 200
@@ -308,17 +325,12 @@ def webhook():
                     if user_sessions.get(sender_id): continue
                     user_sessions[sender_id] = True
                     try:
-                        reply = handle_commands(user_message, sender_id)
-                        if isinstance(reply, dict):
-                            send_message(sender_id, reply["text"], reply.get("quick_replies"))
-                        elif reply:
-                            send_message(sender_id, reply)
+                        handle_commands(user_message, sender_id)
                     finally: user_sessions.pop(sender_id, None)
                 elif "postback" in messaging_event:
                     payload = messaging_event["postback"].get("payload", "")
                     if payload in ["shop", "set_name", "clear_memory", "help"]:
-                        reply = handle_commands(payload, sender_id)
-                        if reply: send_message(sender_id, reply)
+                        handle_commands(payload, sender_id)
     return "EVENT_RECEIVED", 200
 
 if __name__ == '__main__':
