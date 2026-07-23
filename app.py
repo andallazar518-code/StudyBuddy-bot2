@@ -63,7 +63,7 @@ def _dump_history(hist):
 def get_user(sender_id):
     default = {"sender_id": sender_id, "name": None, "chat_count": 0, "rejected_affiliate": False,
                "reject_time": None, "auto_sent": False, "last_promo_time": None, "waiting_for_name": False,
-               "conversation_history": [], "last_interest": None}
+               "conversation_history": [], "last_interest": None, "last_bot_action": None} # NEW
     if not supabase: return default
     try:
         data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
@@ -134,7 +134,7 @@ def check_affiliate_intent(msg):
     if msg in ["yes", "y", "no", "n"]: return False
     return any(w in msg for w in product_words) or any(w in msg for w in buy_words)
 
-def get_affiliate_reply(sender_id, msg): # FIXED: added sender_id
+def get_affiliate_reply(sender_id, msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
@@ -158,6 +158,7 @@ def handle_commands(user_message, sender_id):
     user = get_user(sender_id)
 
     now = time.time()
+    # FIX 1: Reset BOTH flags after 24h
     if user.get('reject_time') and now - user['reject_time'] > 86400:
         update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None, "last_promo_time": None})
         user = get_user(sender_id)
@@ -190,16 +191,26 @@ def handle_commands(user_message, sender_id):
             send_button_template(sender_id, f"👉 **{p['name']}**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": p['shopee'], "title": "Buy Now"}])
             return None
 
+    # FIX 2: YES/NO with context
     if msg in ["yes", "y"]:
-        if user.get('rejected_affiliate'):
-            return "No problem! 😊 I won't send store links until the 24 hours are up."
-        update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
-        send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": MAIN_SHOPEE_STORE, "title": "🛒 Open Store"}])
-        return None
+        if user.get('last_bot_action') == "asked_promo":
+            if user.get('rejected_affiliate'):
+                update_user(sender_id, {"last_bot_action": None})
+                return "No problem! 😊 I won't send store links until the 24 hours are up."
+            update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": None})
+            send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": MAIN_SHOPEE_STORE, "title": "🛒 Open Store"}])
+            return None
+        else:
+            update_user(sender_id, {"last_bot_action": None})
+            return None # Let Groq handle "yes to book"
 
     if msg in ["no", "n", "no need", "not now", "pass", "later"]:
-        update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "waiting_for_name": False})
-        return "Got it! 😊 I'll stop asking about supplies for 24 hours."
+        if user.get('last_bot_action') == "asked_promo":
+            update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "waiting_for_name": False, "last_bot_action": None})
+            return "Got it! 😊 I'll stop asking about supplies for 24 hours."
+        else:
+            update_user(sender_id, {"last_bot_action": None})
+            return None # Let Groq handle
 
     if msg == "reset name":
         update_user(sender_id, {"name": None, "waiting_for_name": True})
@@ -242,16 +253,17 @@ def handle_commands(user_message, sender_id):
             qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
             update_user(sender_id, {"waiting_for_name": True})
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
+        # FIX 3: Set context when asking promo
         if new_count % 8 == 0 and not user.get('rejected_affiliate') and not user.get('auto_sent'):
-            update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
+            update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": "asked_promo"})
             qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
             return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-        return f"**StudyBuddy v14.37 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+        return f"**StudyBuddy v14.38 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
     if not user.get('rejected_affiliate'):
         if check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
-            if get_affiliate_reply(sender_id, msg): # FIXED: pass sender_id
+            if get_affiliate_reply(sender_id, msg):
                 return None
 
     if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
@@ -265,7 +277,7 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     history = user.get('conversation_history', [])
     if should_save_to_memory(user_message): history.append({"role": "user", "content": user_message})
-    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.37 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
+    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.38 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
     messages.extend(history[-10:])
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
@@ -322,4 +334,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.37", 200
+def home(): return "StudyBuddy v14.38", 200
