@@ -280,7 +280,7 @@ def call_groq_api(messages):
       "model": "llama-3.3-70b-versatile",
       "messages": messages,
       "temperature": 0.7,
-      "max_tokens": 500,
+      "max_tokens": 300,
   }
   try:
     res = requests.post(
@@ -373,7 +373,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
       ),
   }
 
-  ai_messages = [system_prompt] + history[-10:]
+  ai_messages = [system_prompt] + history[-5:]
   bot_reply = call_groq_api(ai_messages)
 
   if matched_product:
