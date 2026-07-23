@@ -235,9 +235,21 @@ def update_user(sender_id, updates):
     print(f"DB UPDATE ERROR for {sender_id}:", e)
 
 
+def send_typing_indicator(sender_id, action="typing_on"):
+  if not PAGE_ACCESS_TOKEN:
+    return
+  url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+  payload = {"recipient": {"id": sender_id}, "sender_action": action}
+  try:
+    requests.post(url, json=payload, timeout=5)
+  except requests.exceptions.RequestException:
+    pass
+
+
 def send_message(sender_id, text, quick_replies=None):
   if not PAGE_ACCESS_TOKEN:
     return
+  send_typing_indicator(sender_id, "typing_off")
   text = str(text)[:2000]
   url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
   payload = {"recipient": {"id": sender_id}, "message": {"text": text}}
@@ -252,6 +264,7 @@ def send_message(sender_id, text, quick_replies=None):
 def send_button_template(sender_id, text, buttons):
   if not PAGE_ACCESS_TOKEN:
     return
+  send_typing_indicator(sender_id, "typing_off")
   url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
   payload = {
       "recipient": {"id": sender_id},
@@ -278,7 +291,6 @@ def call_groq_api(messages):
       "Content-Type": "application/json",
   }
   
-  # Try primary model first, fallback to lighter model if rate limited
   models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
   
   for model in models_to_try:
@@ -316,8 +328,11 @@ def call_groq_api(messages):
 
 
 def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
+  send_typing_indicator(sender_id, "typing_on")
+  
   last_time = last_request_times.get(sender_id, 0)
   if time.time() - last_time < SESSION_COOLDOWN:
+    send_typing_indicator(sender_id, "typing_off")
     return
   last_request_times[sender_id] = time.time()
 
@@ -432,6 +447,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
 
 
 def handle_postback(sender_id, payload):
+  send_typing_indicator(sender_id, "typing_on")
   user = get_user(sender_id)
   
   standard_quick_replies = [
@@ -512,11 +528,17 @@ def webhook():
               qr_payload = messaging.get("message", {}).get("quick_reply", {}).get("payload")
               qr_text = msg.get("text", "") if qr_payload else ""
               if text or qr_payload:
-                handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload, qr_text=qr_text)
+                threading.Thread(
+                    target=handle_incoming_message,
+                    args=(sender_id, text, qr_payload, qr_text)
+                ).start()
             elif messaging.get("postback"):
               payload = messaging["postback"].get("payload")
               if payload:
-                handle_postback(sender_id, payload)
+                threading.Thread(
+                    target=handle_postback,
+                    args=(sender_id, payload)
+                ).start()
       except Exception as e:
         print("WEBHOOK PROCESSING ERROR:", e)
 
