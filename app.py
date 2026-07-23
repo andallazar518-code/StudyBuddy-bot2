@@ -391,7 +391,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
         f"\n\n🔍 I couldn't find that exact item in our featured list, but you can search and check it here with our vouchers:\n"
         f"👉 {search_tracked_url}"
     )
-  elif chat_count % 8 == 0:
+  elif chat_count % 4 == 0:
     prod_key = random.choice(list(PRODUCT_MAP.keys()))
     prod = PRODUCT_MAP[prod_key]
     tracked_url = get_tracked_link(prod["shopee"], sender_id, prod_key)
@@ -429,10 +429,11 @@ def handle_postback(sender_id, payload):
   if payload == "shop":
     tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
     shop_message = (
-        "🛍️ **Welcome to StudyBuddy Shop!**\n\n"
-        "Mag-browse at mamili ng iba't ibang school supplies at i-claim ang iyong mga exclusive vouchers dito:\n\n"
-        f"👉 {tracked_store_url}"
-    )
+            f"Hi! 🛍️ **Welcome to StudyBuddy Shop**\n\n"
+            f"Browse ka lang dito ng mga gamit sa school. May discount codes din kami!\n\n"
+            f"👉 {tracked_store_url}\n\n"
+            f"*Support our page by shopping through this link. Thank you!*"
+        )
     send_message(
         sender_id,
         shop_message,
