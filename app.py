@@ -30,7 +30,7 @@ supabase = (
     else None
 )
 user_sessions = {}
-SESSION_COOLDOWN = 1.2
+SESSION_COOLDOWN = 3.0
 last_request_times = {}
 
 AFFILIATE_ID = "test123"
@@ -168,7 +168,7 @@ def _load_history(raw):
 
 def _dump_history(hist):
   trimmed = []
-  for m in hist[-3:]:  # Trimmed down to 3 to keep token usage low
+  for m in hist[-3:]:
     m_copy = {
         "role": m.get("role", "user"),
         "content": str(m.get("content", ""))[:500],
@@ -277,35 +277,37 @@ def call_groq_api(messages):
       "Authorization": f"Bearer {GROQ_API_KEY}",
       "Content-Type": "application/json",
   }
-  payload = {
-      "model": "llama-3.3-70b-versatile",
-      "messages": messages,
-      "temperature": 0.7,
-      "max_tokens": 150,  # Lowered slightly to save tokens
-  }
   
-  # Retry loop to automatically handle 429 rate limits
-  for attempt in range(3):
-    try:
-      res = requests.post(
-          "https://api.groq.com/openai/v1/chat/completions",
-          json=payload,
-          headers=headers,
-          timeout=12,
-      )
-      if res.status_code == 200:
-        return res.json()["choices"][0]["message"]["content"]
-      elif res.status_code == 429:
-        sleep_time = (attempt + 1) * 2
-        print(f"Rate limited (429). Retrying in {sleep_time}s...")
-        time.sleep(sleep_time)
-        continue
-      else:
-        print("GROQ API ERROR CODE:", res.status_code)
-        break
-    except requests.exceptions.RequestException as e:
-      print("GROQ API ERROR:", e)
-      time.sleep(2)
+  # Try primary model first, fallback to lighter model if rate limited
+  models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+  
+  for model in models_to_try:
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 150,
+    }
+    
+    for attempt in range(2):
+      try:
+        res = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            json=payload,
+            headers=headers,
+            timeout=12,
+        )
+        if res.status_code == 200:
+          return res.json()["choices"][0]["message"]["content"]
+        elif res.status_code == 429:
+          print(f"Rate limited (429) on {model}. Retrying...")
+          time.sleep(1.5)
+          continue
+        else:
+          break
+      except requests.exceptions.RequestException as e:
+        print(f"GROQ API ERROR on {model}:", e)
+        time.sleep(1)
 
   return (
       "I'm having a little trouble thinking right now. Please try again in a"
@@ -314,7 +316,6 @@ def call_groq_api(messages):
 
 
 def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
-  # Enforce session cooldown to prevent rapid spam
   last_time = last_request_times.get(sender_id, 0)
   if time.time() - last_time < SESSION_COOLDOWN:
     return
@@ -393,7 +394,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
       ),
   }
 
-  ai_messages = [system_prompt] + history[-3:]  # Reduced to last 3 messages to save tokens
+  ai_messages = [system_prompt] + history[-3:]
   bot_reply = call_groq_api(ai_messages)
 
   if matched_product:
