@@ -108,6 +108,36 @@ def send_button_template(sender_id, text, buttons):
     try: requests.post(url, json=payload, timeout=10)
     except Exception as e: print(f"Button send error:", e)
 
+# NEW: Send carousel of recommended products
+def send_product_carousel(sender_id):
+    if not PAGE_ACCESS_TOKEN: return
+    elements = []
+    for product, p in list(PRODUCT_MAP.items())[:4]: # show first 4 products
+        tracked_link = get_tracked_link(p['shopee'], sender_id, product)
+        elements.append({
+            "title": p['name'],
+            "subtitle": p['hook'],
+            "buttons": [
+                {"type": "web_url", "url": tracked_link, "title": "👉 Buy Now"},
+                {"type": "postback", "title": "🔍 Details", "payload": f"details_{product}"}
+            ]
+        })
+    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+    payload = {
+        "recipient": {"id": sender_id},
+        "message": {
+            "attachment": {
+                "type": "template",
+                "payload": {
+                    "template_type": "generic",
+                    "elements": elements
+                }
+            }
+        }
+    }
+    try: requests.post(url, json=payload, timeout=10)
+    except Exception as e: print(f"Carousel send error:", e)
+
 def send_typing(sender_id, action="typing_on"):
     if not PAGE_ACCESS_TOKEN: return
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
@@ -125,15 +155,12 @@ def check_affiliate_intent(msg):
     if msg in ["yes", "y", "no", "n"]: return False
     return any(w in msg for w in product_words) or any(w in msg for w in buy_words)
 
-# POPUP VERSION: 3 buttons with payload
 def get_affiliate_reply(sender_id, msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
             tracked_link = get_tracked_link(p['shopee'], sender_id, product)
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
-
-            # POPUP BUTTONS
             buttons = [
                 {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"},
                 {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"},
@@ -187,14 +214,18 @@ def handle_commands(user_message, sender_id):
             update_user(sender_id, {"last_bot_action": None}); return None
         if msg == "reset name": update_user(sender_id, {"name": None, "waiting_for_name": True}); return "👋 Name reset! What's your name?"
         if msg.startswith("setname_"): fb_name = get_fb_name(sender_id) or "Friend"; update_user(sender_id, {"name": fb_name, "waiting_for_name": False}); return f"👋 Nice to meet you {fb_name}! Got it saved 😊"
-        if msg in ["help", "menu", "commands"]: return """📚 **StudyBuddy Commands:**\n`Hi/Hello` - Greet\n`calculator/laptop/bag` - Product recommendation\n`shop` - Store link\n`My name is [name]` - Save name\n`Reset name` - Change name\n`Clear memory` - Reset AI memory\n`Help` - Show this menu"""
+        if msg in ["help", "menu", "commands"]: return """📚 **StudyBuddy Commands:**\n`Hi/Hello` - Greet\n`calculator/laptop/bag` - Product recommendation\n`shop` - Show recommended products\n`My name is [name]` - Save name\n`Reset name` - Change name\n`Clear memory` - Reset AI memory\n`Help` - Show this menu"""
         if "name is" in msg or "i am" in msg:
             name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
             update_user(sender_id, {"name": name, "waiting_for_name": False}); return f"👋 Welcome {name}! Nice to meet you 😊"
-        if msg == "shop":
+        
+        # UPDATED: shop now shows carousel
+        if msg == "shop" or msg == "recommend":
             if user.get('rejected_affiliate'): return "Got it! 😊 I'll stop asking about supplies for 24 hours. Type `help` for other commands."
-            tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "shop")
-            send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}]); return None
+            send_message(sender_id, "🛒 **Here are my top student picks for you:**")
+            send_product_carousel(sender_id)
+            return None
+
         if msg in ["hi", "hello", "hey"]:
             name = user.get('name')
             if user.get('last_interest') and name:
@@ -205,7 +236,7 @@ def handle_commands(user_message, sender_id):
                 update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": "asked_promo"})
                 qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
                 return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-            return f"**StudyBuddy v14.39.7 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+            return f"**StudyBuddy v14.39.8 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
         for product in PRODUCT_MAP.keys():
             if re.search(r'\b' + re.escape(product) + r'\b', msg):
@@ -227,7 +258,7 @@ def ask_groq(user_message, sender_id):
         if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]): return "I can't share that due to copyright 😅 But you can ask me anything else!"
         history = user.get('conversation_history', [])
         if should_save_to_memory(user_message): history.append({"role": "user", "content": user_message})
-        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.7 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
+        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.8 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
         messages.extend(history[-10:])
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -257,14 +288,26 @@ def webhook():
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN: continue
                     user_sessions[sender_id] = time.time(); send_typing(sender_id)
                     try:
-                        # NEW: Handle all postbacks with payload
                         if 'postback' in event:
                             payload = event['postback']['payload']
                             if payload == 'GET_STARTED':
                                 user = get_user(sender_id); name = user.get('name') or 'there'
                                 send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!"); continue
 
-                            # POPUP PAYLOAD HANDLER
+                            # NEW: Handle carousel details click
+                            if payload.startswith("details_"):
+                                product = payload.replace("details_", "")
+                                if product in PRODUCT_MAP:
+                                    p = PRODUCT_MAP[product]
+                                    tracked_link = get_tracked_link(p['shopee'], sender_id, product)
+                                    text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
+                                    buttons = [
+                                        {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"},
+                                        {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"}
+                                    ]
+                                    send_button_template(sender_id, text, buttons)
+                                    continue
+
                             if payload.startswith("compare_"):
                                 product = payload.replace("compare_", "")
                                 if product in PRODUCT_MAP:
@@ -288,4 +331,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.39.7", 200
+def home(): return "StudyBuddy v14.39.8", 200
