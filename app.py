@@ -290,20 +290,17 @@ def handle_incoming_message(sender_id, text):
   user = get_user(sender_id)
   text_lower = text.strip().lower()
 
-  # Standard quick replies para sa regular chat (Shop at Clear Memory lang)
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
   
-  # Welcome/Intro quick replies na may kasamang Set Name para sa bagong user o simula
   welcome_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
       {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
-  # 1. Handle name-setting flow
   if user.get("waiting_for_name"):
     update_user(
         sender_id, {"name": text.strip(), "waiting_for_name": False}
@@ -315,7 +312,6 @@ def handle_incoming_message(sender_id, text):
     )
     return
 
-  # 2. Handle simple commands or standard chat greetings (May kasamang Set Name)
   if text_lower in ["hi", "hello", "start"]:
     name = user.get("name") or "there"
     send_message(
@@ -325,7 +321,6 @@ def handle_incoming_message(sender_id, text):
     )
     return
 
-  # 3. Default fallback to Groq AI
   chat_count = user.get("chat_count", 0) + 1
   history = user.get("conversation_history", [])
   history.append({"role": "user", "content": text})
@@ -375,10 +370,12 @@ def handle_postback(sender_id, payload):
   ]
 
   if payload == "shop":
+    # Ginamitan natin ng tracked link ang shop postback para gumana nang maayos ang Shopee link
+    tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
     send_message(
         sender_id,
         "Check out our main store and vouchers here:"
-        f" {MAIN_SHOPEE_STORE}",
+        f" {tracked_store_url}",
         quick_replies=standard_quick_replies,
     )
   elif payload == "set_name":
