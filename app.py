@@ -302,7 +302,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None):
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
-  # Kung may Quick Reply payload na kasama, unahin itong ituring bilang command/payload
   effective_payload = quick_reply_payload
   if not effective_payload:
     if text_lower in ["🛒 shop", "shop"]:
@@ -326,7 +325,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None):
     )
     send_message(
         sender_id,
-        f"Sige, {text.strip()}! 🙋‍♀️ Na-update na ang name mo. 😊 Kamusta? Anong plano mo ngayon?",
+        f"Alright, {text.strip()}! 🙋‍♀️ Your name has been updated. 😊 How are you? What are your plans for today?",
         quick_replies=standard_quick_replies,
     )
     return
@@ -349,7 +348,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None):
       "content": (
           "You are StudyBuddy PH, a helpful student assistant chatbot in the"
           f" Philippines. The user's name is {user.get('name', 'Friend')}."
-          " Respond concisely, friendly, and helpfully."
+          " Respond concisely, friendly, and helpfully in English."
       ),
   }
 
@@ -404,21 +403,20 @@ def handle_postback(sender_id, payload):
     update_user(sender_id, {"waiting_for_name": True})
     send_message(
         sender_id,
-        "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬",
+        "Alright! What is your new name? Just type it here. 📝💬",
         quick_replies=standard_quick_replies,
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0, "name": None, "waiting_for_name": False})
-    # Pagka-clear, kailangan maging welcome quick replies agad (na may Set Name)
     send_message(
         sender_id,
-        "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
+        "🧠 I have cleared our memory. Let's start fresh!",
         quick_replies=welcome_quick_replies,
     )
   elif payload == "help":
     send_message(
         sender_id,
-        "Puwede mo akong tanungin tungkol sa pag-aaral, o i-click ang Shop para sa mga school supplies.",
+        "You can ask me questions about your studies, or click Shop for school supplies.",
         quick_replies=current_qr,
     )
 
@@ -450,7 +448,6 @@ def webhook():
             if messaging.get("message"):
               msg = messaging["message"]
               text = msg.get("text", "")
-              # Kunin ang payload kung mayroon mang quick_reply payload na kasama
               qr_payload = msg.get("quick_reply", {}).get("payload")
               if text or qr_payload:
                 handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload)
