@@ -14,9 +14,10 @@ from supabase import create_client
 app = Flask(__name__)
 
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY_1 = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY_2 = os.environ.get("GROQ_API_KEY_2") # Optional secondary key for multi-account limit balancing
 
-if not PAGE_ACCESS_TOKEN or not GROQ_API_KEY:
+if not PAGE_ACCESS_TOKEN or not GROQ_API_KEY_1:
   raise ValueError("Missing PAGE_ACCESS_TOKEN or GROQ_API_KEY")
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "TUBO2026")
@@ -168,7 +169,7 @@ def _load_history(raw):
 
 def _dump_history(hist):
   trimmed = []
-  for m in hist[-4:]:
+  for m in hist[-5:]:
     m_copy = {
         "role": m.get("role", "user"),
         "content": str(m.get("content", ""))[:500],
@@ -286,16 +287,25 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
-  headers = {
-      "Authorization": f"Bearer {GROQ_API_KEY}",
-      "Content-Type": "application/json",
-  }
+  attempts_plan = [
+      {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
+      {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
+  ]
   
-  models_to_try = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
-  
-  for model in models_to_try:
+  if GROQ_API_KEY_2:
+    attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
+    attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
+
+  for plan in attempts_plan:
+    if not plan["key"]:
+      continue
+      
+    headers = {
+        "Authorization": f"Bearer {plan['key']}",
+        "Content-Type": "application/json",
+    }
     payload = {
-        "model": model,
+        "model": plan["model"],
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 150,
@@ -312,13 +322,13 @@ def call_groq_api(messages):
         if res.status_code == 200:
           return res.json()["choices"][0]["message"]["content"]
         elif res.status_code == 429:
-          print(f"Rate limited (429) on {model}. Retrying...")
+          print(f"Rate limited (429) on {plan['model']}. Retrying...")
           time.sleep(1.5)
           continue
         else:
           break
       except requests.exceptions.RequestException as e:
-        print(f"GROQ API ERROR on {model}:", e)
+        print(f"GROQ API ERROR on {plan['model']}:", e)
         time.sleep(1)
 
   return (
