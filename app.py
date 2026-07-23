@@ -17,8 +17,6 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 user_sessions = {}
 SESSION_COOLDOWN = 1.2
-
-# NEW: Tracking ID for Shopee links
 AFFILIATE_ID = "studybuddy"
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 
@@ -61,12 +59,11 @@ def _load_history(raw):
     try: return json.loads(raw)
     except: return []
 
-# FIX: Truncate history to prevent DB bloat
 def _dump_history(hist):
     trimmed = []
     for m in hist[-10:]:
         m_copy = m.copy()
-        m_copy['content'] = m_copy['content'][:500] # max 500 chars
+        m_copy['content'] = m_copy['content'][:500]
         trimmed.append(m_copy)
     return json.dumps(trimmed)
 
@@ -128,13 +125,20 @@ def check_affiliate_intent(msg):
     if msg in ["yes", "y", "no", "n"]: return False
     return any(w in msg for w in product_words) or any(w in msg for w in buy_words)
 
+# POPUP VERSION: 3 buttons with payload
 def get_affiliate_reply(sender_id, msg):
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
             tracked_link = get_tracked_link(p['shopee'], sender_id, product)
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
-            buttons = [{"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}, {"type": "postback", "title": "📎 See All", "payload": "shop"}]
+
+            # POPUP BUTTONS
+            buttons = [
+                {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"},
+                {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"},
+                {"type": "postback", "title": "📎 See All", "payload": "shop"}
+            ]
             send_button_template(sender_id, text, buttons)
             return True
     if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
@@ -145,20 +149,18 @@ def get_affiliate_reply(sender_id, msg):
         return True
     return False
 
-# FIX: Wrapped in try/except + Fixed counting + Added product-first check + STOP double reply
 def handle_commands(user_message, sender_id):
     try:
         msg = user_message.lower().strip(); raw_msg = user_message; user = get_user(sender_id); now = time.time()
-        # FIX: Reset BOTH flags after 24h
         if user.get('reject_time') and now - user['reject_time'] > 86400:
             update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None, "last_promo_time": None}); user = get_user(sender_id)
         if user.get('last_promo_time') and now - user['last_promo_time'] > 86400:
             update_user(sender_id, {"auto_sent": False}); user = get_user(sender_id)
-        # FIX: Only count real messages
+
         skip_count = ["hi","hello","hey","help","menu","shop","yes","no","y","n","reset name","commands","clear memory"]
         new_count = user.get('chat_count', 0) + 1 if msg not in skip_count else user.get('chat_count', 0)
         update_user(sender_id, {"chat_count": new_count})
-        print(f"[{sender_id}] MSG: {msg} | COUNT: {new_count}") # LOG
+        print(f"[{sender_id}] MSG: {msg} | COUNT: {new_count}")
 
         if "@meta ai" in raw_msg.lower() or "open link" in msg:
             if user.get('rejected_affiliate'): return "Got it! 😊 I'll stop asking about supplies for 24 hours."
@@ -203,14 +205,13 @@ def handle_commands(user_message, sender_id):
                 update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": "asked_promo"})
                 qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
                 return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-            return f"**StudyBuddy v14.39.6 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+            return f"**StudyBuddy v14.39.7 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
-        # FIX: Force product check before Groq + STOP double reply
         for product in PRODUCT_MAP.keys():
-            if re.search(r'\b' + re.escape(product) + r'\b', msg): # use word boundary so "backpacker" won't trigger
+            if re.search(r'\b' + re.escape(product) + r'\b', msg):
                 update_user(sender_id, {"last_interest": user_message})
                 get_affiliate_reply(sender_id, msg)
-                return None # STOP HERE. Don't go to Groq
+                return None
         if not user.get('rejected_affiliate') and check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
             if get_affiliate_reply(sender_id, msg): return None
@@ -226,18 +227,17 @@ def ask_groq(user_message, sender_id):
         if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]): return "I can't share that due to copyright 😅 But you can ask me anything else!"
         history = user.get('conversation_history', [])
         if should_save_to_memory(user_message): history.append({"role": "user", "content": user_message})
-        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.6 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
+        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.7 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
         messages.extend(history[-10:])
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
         data = {"model": "llama-3.3-70b-versatile", "messages": messages, "temperature": 0.7, "max_tokens": 300}
-        r = requests.post(url, headers=headers, json=data, timeout=45); r.raise_for_status() # FIX: longer timeout
+        r = requests.post(url, headers=headers, json=data, timeout=45); r.raise_for_status()
         ai_reply = r.json()['choices'][0]['message']['content']
         if should_save_to_memory(user_message): history.append({"role": "assistant", "content": ai_reply}); update_user(sender_id, {"conversation_history": history})
         return ai_reply
     except Exception as e: print(f"GROQ EXCEPTION for {sender_id}:", e); return f"The AI had an error 😅 But I'm still here {name}. Try again."
 
-# FIX: Memory leak cleanup for user_sessions
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
     global user_sessions
@@ -247,7 +247,6 @@ def webhook():
     if request.method == 'POST':
         if not verify_signature(request): abort(403)
         data = request.get_json()
-        # Cleanup sessions older than 1 hour
         now = time.time()
         user_sessions = {k:v for k,v in user_sessions.items() if now - v < 3600}
 
@@ -258,9 +257,25 @@ def webhook():
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN: continue
                     user_sessions[sender_id] = time.time(); send_typing(sender_id)
                     try:
-                        if 'postback' in event and event['postback']['payload'] == 'GET_STARTED':
-                            user = get_user(sender_id); name = user.get('name') or 'there'
-                            send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!"); continue
+                        # NEW: Handle all postbacks with payload
+                        if 'postback' in event:
+                            payload = event['postback']['payload']
+                            if payload == 'GET_STARTED':
+                                user = get_user(sender_id); name = user.get('name') or 'there'
+                                send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!"); continue
+
+                            # POPUP PAYLOAD HANDLER
+                            if payload.startswith("compare_"):
+                                product = payload.replace("compare_", "")
+                                if product in PRODUCT_MAP:
+                                    p = PRODUCT_MAP[product]
+                                    send_message(sender_id, f"📊 **{p['name']} Price Tips:**\n\n1. Check Shopee Mall for vouchers\n2. Add to cart during 15.15 / 25 sale\n3. Use student voucher for extra 10% off\nNeed the link again? Type `{product}`")
+                                    continue
+
+                            if payload == "shop":
+                                tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "shop")
+                                send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}]); continue
+
                         if 'message' in event and 'attachments' in event['message']: send_message(sender_id, "I can only reply to text messages for now 😅"); continue
                         if 'message' in event and 'text' in event['message']:
                             user_message = event['message']['text']
@@ -273,4 +288,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.39.6", 200
+def home(): return "StudyBuddy v14.39.7", 200
