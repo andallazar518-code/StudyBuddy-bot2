@@ -329,7 +329,8 @@ def handle_incoming_message(sender_id, text):
     )
     return
 
-  # 3. Default fallback to Groq AI for open-ended conversation
+  # 3. Default fallback to Groq AI for open-ended conversation and 8th-message affiliate trigger
+  chat_count = user.get("chat_count", 0) + 1
   history = user.get("conversation_history", [])
   history.append({"role": "user", "content": text})
 
@@ -346,7 +347,18 @@ def handle_incoming_message(sender_id, text):
   bot_reply = call_groq_api(ai_messages)
 
   history.append({"role": "assistant", "content": bot_reply})
-  update_user(sender_id, {"conversation_history": history})
+  
+  # Check if it hits every 8 messages to trigger an affiliate recommendation
+  if chat_count % 8 == 0:
+    prod_key = random.choice(list(PRODUCT_MAP.keys()))
+    prod = PRODUCT_MAP[prod_key]
+    tracked_url = get_tracked_link(prod["shopee"], sender_id, prod_key)
+    bot_reply += (
+        f"\n\n💡 {prod['hook']}\n{prod['benefit']}!\nCheck it out here:"
+        f" {tracked_url}"
+    )
+
+  update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
   send_message(sender_id, bot_reply)
 
 
@@ -363,7 +375,7 @@ def handle_postback(sender_id, payload):
         sender_id, "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬"
     )
   elif payload == "clear_memory":
-    update_user(sender_id, {"conversation_history": []})
+    update_user(sender_id, {"conversation_history": [], "chat_count": 0})
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
