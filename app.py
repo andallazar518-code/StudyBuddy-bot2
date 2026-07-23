@@ -31,8 +31,8 @@ supabase = (
 )
 user_sessions = {}
 SESSION_COOLDOWN = 1.2
-AFFILIATE_ID = "studybuddy"
-MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr"
+AFFILIATE_ID = "test123"
+MAIN_SHOPEE_STORE = "https://s.shopee.ph/8fQz7TwnGa"
 
 PRODUCT_MAP = {
     "calculator": {
@@ -42,20 +42,20 @@ PRODUCT_MAP = {
         "benefit": "Approved for board exams. 552 functions",
     },
     "notebook": {
-        "name": "National Notebook 80 Leaves",
-        "shopee": "https://s.shopee.ph/BSBSox6US",
+        "name": "Steno Notebook",
+        "shopee": "https://s.shopee.ph/2g9lyGVq1j",
         "hook": "Ink keeps bleeding through? 📓",
         "benefit": "Thick 70gsm paper",
     },
     "laptop": {
-        "name": "Lenovo Ideapad 3 Laptop",
+        "name": "Recommended Laptop",
         "shopee": "https://s.shopee.ph/9AN0C8jKBb",
         "hook": "Need a laptop for school & work? 💻",
-        "benefit": "Budget-friendly. Intel i3",
+        "benefit": "Budget-friendly. Intel i7",
     },
     "mouse": {
         "name": "Wireless Silent Mouse",
-        "shopee": "https://s.shopee.ph/7pKqL9xAbc",
+        "shopee": "https://s.shopee.ph/AAFmtvFjIy",
         "hook": "Wrist pain from clicking? 🖱️",
         "benefit": "Ergonomic design. Silent click",
     },
@@ -67,7 +67,7 @@ PRODUCT_MAP = {
     },
     "headset": {
         "name": "Gaming Headset with Noise Cancelling Mic",
-        "shopee": "https://s.shopee.ph/4wZxY6vTuv",
+        "shopee": "https://s.shopee.ph/1LeONYhvY0",
         "hook": "Can't hear clearly in online class? 🎧",
         "benefit": "Crystal clear mic",
     },
