@@ -136,7 +136,7 @@ def get_affiliate_reply(sender_id, msg):
         return True
     return False
 
-# FIX: Wrapped in try/except + Fixed counting + Added product-first check
+# FIX: Wrapped in try/except + Fixed counting + Added product-first check + STOP double reply
 def handle_commands(user_message, sender_id):
     try:
         msg = user_message.lower().strip(); raw_msg = user_message; user = get_user(sender_id); now = time.time()
@@ -193,19 +193,20 @@ def handle_commands(user_message, sender_id):
                 update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": "asked_promo"})
                 qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
                 return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-            return f"**StudyBuddy v14.39.3 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
+            return f"**StudyBuddy v14.39.5 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
-      # FIX: Force product check before Groq + STOP double reply
-for product in PRODUCT_MAP.keys():
-    if re.search(r'\b' + re.escape(product) + r'\b', msg): # use word boundary so "backpacker" won't trigger
-        update_user(sender_id, {"last_interest": user_message})
-        get_affiliate_reply(sender_id, msg)
-        return None # <-- THIS IS THE KEY. Stop here.
-        
+        # FIX: Force product check before Groq + STOP double reply
+        for product in PRODUCT_MAP.keys():
+            if re.search(r'\b' + re.escape(product) + r'\b', msg): # use word boundary so "backpacker" won't trigger
+                update_user(sender_id, {"last_interest": user_message})
+                get_affiliate_reply(sender_id, msg)
+                return None # STOP HERE. Don't go to Groq
+
         if not user.get('rejected_affiliate') and check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
             if get_affiliate_reply(sender_id, msg): return None
         if any(w in msg for w in ["tired", "stress", "hard", "sad"]): return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
+
     except Exception as e:
         print("HANDLE COMMANDS CRASH:", e)
         return "Oops I crashed 😅 Try typing again"
@@ -217,7 +218,7 @@ def ask_groq(user_message, sender_id):
         if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]): return "I can't share that due to copyright 😅 But you can ask me anything else!"
         history = user.get('conversation_history', [])
         if should_save_to_memory(user_message): history.append({"role": "user", "content": user_message})
-        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.3 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
+        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.5 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
         messages.extend(history[-10:])
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
@@ -264,4 +265,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.39.3", 200
+def home(): return "StudyBuddy v14.39.5", 200
