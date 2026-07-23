@@ -291,6 +291,11 @@ def handle_incoming_message(sender_id, text):
   user = get_user(sender_id)
   text_lower = text.strip().lower()
 
+  standard_quick_replies = [
+      {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
+  ]
+
   # 1. Handle name-setting flow if user triggered it
   if user.get("waiting_for_name"):
     update_user(
@@ -301,14 +306,7 @@ def handle_incoming_message(sender_id, text):
         f"Sige, {text.strip()}! 🙋‍♀️ Na-update na ang name mo. From now on,"
         " I'll be calling you by your new name! 😊 Kamusta? Anong plano mo"
         " ngayon?",
-        quick_replies=[
-            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-            {
-                "content_type": "text",
-                "title": "🧠 Clear Memory",
-                "payload": "clear_memory",
-            },
-        ],
+        quick_replies=standard_quick_replies,
     )
     return
 
@@ -319,14 +317,7 @@ def handle_incoming_message(sender_id, text):
       send_message(
           sender_id,
           "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬",
-          quick_replies=[
-              {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-              {
-                  "content_type": "text",
-                  "title": "🧠 Clear Memory",
-                  "payload": "clear_memory",
-              },
-          ],
+          quick_replies=standard_quick_replies,
       )
       return
 
@@ -386,73 +377,42 @@ def handle_incoming_message(sender_id, text):
   send_message(
       sender_id,
       bot_reply,
-      quick_replies=[
-          {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-          {
-              "content_type": "text",
-              "title": "🧠 Clear Memory",
-              "payload": "clear_memory",
-          },
-      ],
+      quick_replies=standard_quick_replies,
   )
 
 
 def handle_postback(sender_id, payload):
+  standard_quick_replies = [
+      {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
+  ]
   if payload == "shop":
     send_message(
         sender_id,
         "Check out our main store and vouchers here:"
         f" {MAIN_SHOPEE_STORE}",
-        quick_replies=[
-            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-            {
-                "content_type": "text",
-                "title": "🧠 Clear Memory",
-                "payload": "clear_memory",
-            },
-        ],
+        quick_replies=standard_quick_replies,
     )
   elif payload == "set_name":
     update_user(sender_id, {"waiting_for_name": True})
     send_message(
         sender_id,
         "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬",
-        quick_replies=[
-            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-            {
-                "content_type": "text",
-                "title": "🧠 Clear Memory",
-                "payload": "clear_memory",
-            },
-        ],
+        quick_replies=standard_quick_replies,
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0})
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
-        quick_replies=[
-            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-            {
-                "content_type": "text",
-                "title": "🧠 Clear Memory",
-                "payload": "clear_memory",
-            },
-        ],
+        quick_replies=standard_quick_replies,
     )
   elif payload == "help":
     send_message(
         sender_id,
         "Puwede mo akong tanungin tungkol sa pag-aaral, o i-type ang 'Set"
         " Name' para palitan ang pangalan mo.",
-        quick_replies=[
-            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-            {
-                "content_type": "text",
-                "title": "🧠 Clear Memory",
-                "payload": "clear_memory",
-            },
-        ],
+        quick_replies=standard_quick_replies,
     )
 
 
