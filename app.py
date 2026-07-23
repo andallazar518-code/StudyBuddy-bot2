@@ -87,7 +87,6 @@ PRODUCT_MAP = {
 
 
 def get_tracked_link(base_url, sender_id, product="store"):
-  # Ibalik nang direkta ang base_url para hindi masira ng custom query ang Shopee short link
   return base_url.strip()
 
 
@@ -98,7 +97,9 @@ def get_dynamic_shopee_search_link(user_message, sender_id):
   
   query = " ".join(filtered_words) if filtered_words else user_message
   formatted_query = quote(query.strip())
-  base_search_url = f"https://shopee.ph/search?keyword={formatted_query}"
+  
+  # Naka-attach na ang keyword sa iyong Shopee Affiliate short link para pumasok ang komisyon
+  base_search_url = f"{MAIN_SHOPEE_STORE}?keyword={formatted_query}"
   return base_search_url
 
 
