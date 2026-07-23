@@ -195,12 +195,13 @@ def handle_commands(user_message, sender_id):
                 return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
             return f"**StudyBuddy v14.39.3 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
-        # FIX: Force product check before Groq
-        for product in PRODUCT_MAP.keys():
-            if product in msg:
-                update_user(sender_id, {"last_interest": user_message})
-                if get_affiliate_reply(sender_id, msg): return None
-
+      # FIX: Force product check before Groq + STOP double reply
+for product in PRODUCT_MAP.keys():
+    if re.search(r'\b' + re.escape(product) + r'\b', msg): # use word boundary so "backpacker" won't trigger
+        update_user(sender_id, {"last_interest": user_message})
+        get_affiliate_reply(sender_id, msg)
+        return None # <-- THIS IS THE KEY. Stop here.
+        
         if not user.get('rejected_affiliate') and check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
             if get_affiliate_reply(sender_id, msg): return None
