@@ -293,6 +293,7 @@ def handle_incoming_message(sender_id, text):
 
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
@@ -326,19 +327,7 @@ def handle_incoming_message(sender_id, text):
         sender_id,
         f"Hello {name}! 👋\n\n📚 Need school supplies? I have vouchers.\n\nWant"
         " it?",
-        quick_replies=[
-            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-            {
-                "content_type": "text",
-                "title": "📝 Set Name",
-                "payload": "set_name",
-            },
-            {
-                "content_type": "text",
-                "title": "🧠 Clear Memory",
-                "payload": "clear_memory",
-            },
-        ],
+        quick_replies=standard_quick_replies,
     )
     return
 
@@ -373,7 +362,7 @@ def handle_incoming_message(sender_id, text):
 
   update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
   
-  # Always show 🛒 Shop and 🧠 Clear Memory on regular chat responses
+  # Always show 🛒 Shop, 📝 Set Name, and 🧠 Clear Memory on regular chat responses
   send_message(
       sender_id,
       bot_reply,
@@ -384,6 +373,7 @@ def handle_incoming_message(sender_id, text):
 def handle_postback(sender_id, payload):
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
   if payload == "shop":
@@ -402,15 +392,10 @@ def handle_postback(sender_id, payload):
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0})
-    clear_memory_quick_replies = [
-        {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
-        {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
-        {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
-    ]
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
-        quick_replies=clear_memory_quick_replies,
+        quick_replies=standard_quick_replies,
     )
   elif payload == "help":
     send_message(
