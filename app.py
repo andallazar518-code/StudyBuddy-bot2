@@ -11,7 +11,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if not PAGE_ACCESS_TOKEN or not GROQ_API_KEY:
     raise ValueError("Missing PAGE_ACCESS_TOKEN or GROQ_API_KEY")
 
-VERIFY_TOKEN = "TUBO2026"
+VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "TUBO2026")
 APP_SECRET = os.environ.get("FB_APP_SECRET")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
@@ -388,12 +388,6 @@ def handle_commands(user_message, sender_id):
 
             return f"**StudyBuddy v14.39.8 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
-        for product in PRODUCT_MAP.keys():
-            if re.search(r'\b' + re.escape(product) + r'\b', msg):
-                update_user(sender_id, {"last_interest": user_message})
-                get_affiliate_reply(sender_id, msg)
-                return None
-
         if not user.get('rejected_affiliate') and check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
             if get_affiliate_reply(sender_id, msg):
@@ -422,8 +416,9 @@ def ask_groq(user_message, sender_id):
 
         messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.8 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
 
-        # Ensure history format is strictly role and content dicts
-        for m in history[-10:]:
+        # Slicing history down to recent context
+        recent_history = history[-10:]
+        for m in recent_history:
             if isinstance(m, dict) and "role" in m and "content" in m:
                 messages.append({"role": str(m["role"]), "content": str(m["content"])})
 
@@ -468,7 +463,10 @@ def webhook():
         if data.get('object') == 'page':
             for entry in data.get('entry', []):
                 for event in entry.get('messaging', []):
-                    sender_id = event['sender']['id']
+                    sender_id = event.get('sender', {}).get('id')
+                    if not sender_id:
+                        continue
+
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN:
                         continue
                     user_sessions[sender_id] = time.time()
@@ -476,7 +474,7 @@ def webhook():
 
                     try:
                         if 'postback' in event:
-                            payload = event['postback']['payload']
+                            payload = event['postback'].get('payload', '')
                             if payload == 'GET_STARTED':
                                 user = get_user(sender_id)
                                 name = user.get('name') or 'there'
