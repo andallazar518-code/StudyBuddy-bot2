@@ -312,6 +312,7 @@ def handle_incoming_message(sender_id, text):
     )
     return
 
+  # Kapag bagong salta o nag-hi/hello, isasama ang Set Name
   if text_lower in ["hi", "hello", "start"]:
     name = user.get("name") or "there"
     send_message(
@@ -350,6 +351,7 @@ def handle_incoming_message(sender_id, text):
 
   update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
   
+  # Regular chat responses ay Shop at Clear Memory na lang (standard)
   send_message(
       sender_id,
       bot_reply,
@@ -370,7 +372,6 @@ def handle_postback(sender_id, payload):
   ]
 
   if payload == "shop":
-    # Ginamitan natin ng tracked link ang shop postback para gumana nang maayos ang Shopee link
     tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
     send_message(
         sender_id,
@@ -387,6 +388,7 @@ def handle_postback(sender_id, payload):
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0})
+    # Pagkatapos mag-Clear Memory, isasama ang Set Name sa quick replies
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
