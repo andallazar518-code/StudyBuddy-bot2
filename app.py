@@ -100,7 +100,6 @@ def setup_menu():
           "composer_input_disabled": False,
           "call_to_actions": [
               {"type": "postback", "title": "🛒 Shop", "payload": "shop"},
-              {"type": "postback", "title": "📝 Set Name", "payload": "set_name"},
               {
                   "type": "postback",
                   "title": "🧠 Clear Memory",
@@ -291,47 +290,42 @@ def handle_incoming_message(sender_id, text):
   user = get_user(sender_id)
   text_lower = text.strip().lower()
 
+  # Standard quick replies para sa regular chat (Shop at Clear Memory lang)
   standard_quick_replies = [
+      {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
+  ]
+  
+  # Welcome/Intro quick replies na may kasamang Set Name para sa bagong user o simula
+  welcome_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
       {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
-  # 1. Handle name-setting flow if user triggered it
+  # 1. Handle name-setting flow
   if user.get("waiting_for_name"):
     update_user(
         sender_id, {"name": text.strip(), "waiting_for_name": False}
     )
     send_message(
         sender_id,
-        f"Sige, {text.strip()}! 🙋‍♀️ Na-update na ang name mo. From now on,"
-        " I'll be calling you by your new name! 😊 Kamusta? Anong plano mo"
-        " ngayon?",
+        f"Sige, {text.strip()}! 🙋‍♀️ Na-update na ang name mo. 😊 Kamusta? Anong plano mo ngayon?",
         quick_replies=standard_quick_replies,
     )
     return
 
-  # 2. Handle simple commands or standard chat greetings with Set Name, Shop, and Clear Memory included
-  if text_lower in ["hi", "hello", "start", "set name"]:
-    if text_lower == "set name":
-      update_user(sender_id, {"waiting_for_name": True})
-      send_message(
-          sender_id,
-          "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬",
-          quick_replies=standard_quick_replies,
-      )
-      return
-
+  # 2. Handle simple commands or standard chat greetings (May kasamang Set Name)
+  if text_lower in ["hi", "hello", "start"]:
     name = user.get("name") or "there"
     send_message(
         sender_id,
-        f"Hello {name}! 👋\n\n📚 Need school supplies? I have vouchers.\n\nWant"
-        " it?",
-        quick_replies=standard_quick_replies,
+        f"Hello {name}! 👋\n\n📚 Need school supplies? I have vouchers.\n\nWant it?",
+        quick_replies=welcome_quick_replies,
     )
     return
 
-  # 3. Default fallback to Groq AI for open-ended conversation and 8th-message affiliate trigger
+  # 3. Default fallback to Groq AI
   chat_count = user.get("chat_count", 0) + 1
   history = user.get("conversation_history", [])
   history.append({"role": "user", "content": text})
@@ -350,7 +344,6 @@ def handle_incoming_message(sender_id, text):
 
   history.append({"role": "assistant", "content": bot_reply})
   
-  # Check if it hits every 8 messages to trigger an affiliate recommendation
   if chat_count % 8 == 0:
     prod_key = random.choice(list(PRODUCT_MAP.keys()))
     prod = PRODUCT_MAP[prod_key]
@@ -362,7 +355,6 @@ def handle_incoming_message(sender_id, text):
 
   update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
   
-  # Always show 🛒 Shop, 📝 Set Name, and 🧠 Clear Memory on regular chat responses
   send_message(
       sender_id,
       bot_reply,
@@ -373,9 +365,15 @@ def handle_incoming_message(sender_id, text):
 def handle_postback(sender_id, payload):
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
+  ]
+  
+  welcome_quick_replies = [
+      {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
       {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
+
   if payload == "shop":
     send_message(
         sender_id,
@@ -395,13 +393,12 @@ def handle_postback(sender_id, payload):
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
-        quick_replies=standard_quick_replies,
+        quick_replies=welcome_quick_replies,
     )
   elif payload == "help":
     send_message(
         sender_id,
-        "Puwede mo akong tanungin tungkol sa pag-aaral, o i-type ang 'Set"
-        " Name' para palitan ang pangalan mo.",
+        "Puwede mo akong tanungin tungkol sa pag-aaral, o i-click ang Shop para sa mga school supplies.",
         quick_replies=standard_quick_replies,
     )
 
