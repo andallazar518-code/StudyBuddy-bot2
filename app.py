@@ -287,7 +287,7 @@ def call_groq_api(messages):
   )
 
 
-def handle_incoming_message(sender_id, text):
+def handle_incoming_message(sender_id, text, quick_reply_payload=None):
   user = get_user(sender_id)
   text_lower = text.strip().lower()
 
@@ -302,7 +302,22 @@ def handle_incoming_message(sender_id, text):
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
-  # Dynamic quick replies batay kung may name na ang user o wala pa
+  # Kung may Quick Reply payload na kasama, unahin itong ituring bilang command/payload
+  effective_payload = quick_reply_payload
+  if not effective_payload:
+    if text_lower in ["🛒 shop", "shop"]:
+      effective_payload = "shop"
+    elif text_lower in ["📝 set name", "set name", "set_name"]:
+      effective_payload = "set_name"
+    elif text_lower in ["🧠 clear memory", "clear memory", "clear_memory"]:
+      effective_payload = "clear_memory"
+    elif text_lower in ["❓ help", "help"]:
+      effective_payload = "help"
+
+  if effective_payload:
+    handle_postback(sender_id, effective_payload)
+    return
+
   current_qr = welcome_quick_replies if not user.get("name") else standard_quick_replies
 
   if user.get("waiting_for_name"):
@@ -394,6 +409,7 @@ def handle_postback(sender_id, payload):
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0, "name": None, "waiting_for_name": False})
+    # Pagka-clear, kailangan maging welcome quick replies agad (na may Set Name)
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
@@ -432,9 +448,12 @@ def webhook():
           for messaging in entry.get("messaging", []):
             sender_id = messaging.get("sender", {}).get("id")
             if messaging.get("message"):
-              text = messaging["message"].get("text", "")
-              if text:
-                handle_incoming_message(sender_id, text)
+              msg = messaging["message"]
+              text = msg.get("text", "")
+              # Kunin ang payload kung mayroon mang quick_reply payload na kasama
+              qr_payload = msg.get("quick_reply", {}).get("payload")
+              if text or qr_payload:
+                handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload)
             elif messaging.get("postback"):
               payload = messaging["postback"].get("payload")
               if payload:
