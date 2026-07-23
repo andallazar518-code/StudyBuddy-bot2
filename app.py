@@ -91,6 +91,12 @@ def get_tracked_link(base_url, sender_id, product="store"):
   return f"{base_url}{separator}{tracker}"
 
 
+def get_dynamic_shopee_search_link(search_query, sender_id):
+  formatted_query = search_query.strip().replace(" ", "%20")
+  base_search_url = f"https://s.shopee.ph/search?keyword={formatted_query}"
+  return get_tracked_link(base_search_url, sender_id, "dynamic_search")
+
+
 def setup_menu():
   if not PAGE_ACCESS_TOKEN:
     return
@@ -341,6 +347,13 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
     )
     return
 
+  # --- SMART PRODUCT / ITEM FINDER LOGIC ---
+  matched_product = None
+  for key, prod in PRODUCT_MAP.items():
+    if key in text_lower or any(word in text_lower for word in prod["name"].lower().split()):
+      matched_product = (key, prod)
+      break
+
   chat_count = user.get("chat_count", 0) + 1
   history = user.get("conversation_history", [])
   history.append({"role": "user", "content": text})
@@ -357,9 +370,23 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
   ai_messages = [system_prompt] + history[-10:]
   bot_reply = call_groq_api(ai_messages)
 
-  history.append({"role": "assistant", "content": bot_reply})
-  
-  if chat_count % 8 == 0:
+  if matched_product:
+    pkey, pval = matched_product
+    tracked_url = get_tracked_link(pval["shopee"], sender_id, pkey)
+    bot_reply += (
+        f"\n\n🔍 Speaking of that, I found this for you:\n"
+        f"📦 **{pval['name']}**\n"
+        f"✨ {pval['benefit']}!\n"
+        f"👉 Check it here: {tracked_url}"
+    )
+  elif any(word in text_lower for word in ["buy", "search", "magkano", "price", "kano", "hanap", "pwede", "meron", "shop", "order"]):
+    # Kung naghahanap ng item pero walang sakto sa PRODUCT_MAP, gagawa ng dynamic search link
+    search_tracked_url = get_dynamic_shopee_search_link(text, sender_id)
+    bot_reply += (
+        f"\n\n🔍 I couldn't find that exact item in our featured list, but you can search and check it here with our vouchers:\n"
+        f"👉 {search_tracked_url}"
+    )
+  elif chat_count % 8 == 0:
     prod_key = random.choice(list(PRODUCT_MAP.keys()))
     prod = PRODUCT_MAP[prod_key]
     tracked_url = get_tracked_link(prod["shopee"], sender_id, prod_key)
@@ -368,6 +395,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
         f" {tracked_url}"
     )
 
+  history.append({"role": "assistant", "content": bot_reply})
   update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
   
   send_message(
@@ -396,9 +424,8 @@ def handle_postback(sender_id, payload):
   if payload == "shop":
     tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
     
-    # Custom interactive shop display featuring top student products
     shop_message = "🛍️ Welcome to StudyBuddy Shop!\n\nHere are some of our top recommended school supplies with exclusive vouchers:\n\n"
-    for key, prod in list(PRODUCT_MAP.items())[:4]: # Pwedeng ilista ang top 4 products
+    for key, prod in list(PRODUCT_MAP.items())[:4]:
       p_link = get_tracked_link(prod["shopee"], sender_id, key)
       shop_message += f"• {prod['name']}\n  {prod['benefit']}!\n  👉 {p_link}\n\n"
     
