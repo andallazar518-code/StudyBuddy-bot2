@@ -47,10 +47,10 @@ PRODUCT_MAP = {
         "benefit": "Thick 70gsm paper",
     },
     "laptop": {
-        "name": "Lenovo Ideapad 3 Laptop",
+        "name": "Recommended Laptop",
         "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9",
         "hook": "Need a laptop for school & work? 💻",
-        "benefit": "Budget-friendly. Intel i3",
+        "benefit": "Budget-friendly. Intel i7",
     },
     "mouse": {
         "name": "Wireless Silent Mouse",
@@ -427,14 +427,11 @@ def handle_postback(sender_id, payload):
 
   if payload == "shop":
     tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
-    
-    shop_message = "🛍️ Welcome to StudyBuddy Shop!\n\nHere are some of our top recommended school supplies with exclusive vouchers:\n\n"
-    for key, prod in list(PRODUCT_MAP.items())[:4]:
-      p_link = get_tracked_link(prod["shopee"], sender_id, key)
-      shop_message += f"• {prod['name']}\n  {prod['benefit']}!\n  👉 {p_link}\n\n"
-    
-    shop_message += f"📦 Browse all items and claim more vouchers at our main store here:\n{tracked_store_url}"
-    
+    shop_message = (
+        "🛍️ **Welcome to StudyBuddy Shop!**\n\n"
+        "Mag-browse at mamili ng iba't ibang school supplies at i-claim ang iyong mga exclusive vouchers dito:\n\n"
+        f"👉 {tracked_store_url}"
+    )
     send_message(
         sender_id,
         shop_message,
