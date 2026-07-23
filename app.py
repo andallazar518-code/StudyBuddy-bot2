@@ -1,5 +1,5 @@
 from flask import Flask, request, abort
-import requests, os, time, random, re, json, hashlib, hmac
+import requests, os, time, random, re, json, hashlib, hmac, threading
 from supabase import create_client
 
 app = Flask(__name__)
@@ -136,7 +136,7 @@ def get_user(sender_id):
         return default
     try:
         data = supabase.table('users').select("*").eq("sender_id", sender_id).execute()
-        if data.data:
+        if data and getattr(data, 'data', None):
             user = data.data[0]
             user['conversation_history'] = _load_history(user.get('conversation_history'))
             if not user.get('name') or user.get('name') == 'Boss':
@@ -431,7 +431,7 @@ def ask_groq(user_message, sender_id):
             "max_tokens": 300
         }
 
-        r = requests.post(url, headers=headers, json=data, timeout=45)
+        r = requests.post(url, headers=headers, json=data, timeout=15)
         if r.status_code == 200:
             ai_reply = r.json()['choices'][0]['message']['content']
             if should_save_to_memory(user_message):
@@ -444,6 +444,69 @@ def ask_groq(user_message, sender_id):
     except Exception as e:
         print(f"GROQ EXCEPTION for {sender_id}:", e)
         return f"The AI had an error 😅 But I'm still here {name}. Try again."
+
+def process_event(event):
+    """Processes each webhook message asynchronously in a background thread."""
+    sender_id = event.get('sender', {}).get('id')
+    if not sender_id:
+        return
+
+    send_typing(sender_id)
+
+    try:
+        if 'postback' in event:
+            payload = event['postback'].get('payload', '')
+            if payload == 'GET_STARTED':
+                user = get_user(sender_id)
+                name = user.get('name') or 'there'
+                send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!")
+                return
+
+            if payload.startswith("details_"):
+                product = payload.replace("details_", "")
+                if product in PRODUCT_MAP:
+                    p = PRODUCT_MAP[product]
+                    tracked_link = get_tracked_link(p['shopee'], sender_id, product)
+                    text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
+                    buttons = [
+                        {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}, 
+                        {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"[:1000]}
+                    ]
+                    send_button_template(sender_id, text, buttons)
+                return
+
+            if payload.startswith("compare_"):
+                product = payload.replace("compare_", "")
+                if product in PRODUCT_MAP:
+                    p = PRODUCT_MAP[product]
+                    send_message(sender_id, f"📊 **{p['name']} Price Tips:**\n\n1. Check Shopee Mall for vouchers\n2. Add to cart during 15.15 / 25 sale\n3. Use student voucher for extra 10% off\nNeed the link again? Type `{product}`")
+                return
+
+            if payload == "shop":
+                tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "shop")
+                send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
+                return
+
+        if 'message' in event and 'attachments' in event['message']:
+            send_message(sender_id, "I can only reply to text messages for now 😅")
+            return
+
+        if 'message' in event and 'text' in event['message']:
+            user_message = event['message']['text']
+            cmd = handle_commands(user_message, sender_id)
+            if isinstance(cmd, dict):
+                send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
+            elif cmd:
+                send_message(sender_id, cmd)
+            else:
+                ai = ask_groq(user_message, sender_id)
+                send_message(sender_id, ai)
+
+    except Exception as e:
+        print(f"ERROR for {sender_id}:", e)
+        send_message(sender_id, "Error 😅")
+    finally:
+        send_typing(sender_id, "typing_off")
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
@@ -458,7 +521,7 @@ def webhook():
             abort(403)
         data = request.get_json()
         now = time.time()
-        user_sessions = {k:v for k,v in user_sessions.items() if now - v < 3600}
+        user_sessions = {k: v for k, v in user_sessions.items() if now - v < 3600}
 
         if data.get('object') == 'page':
             for entry in data.get('entry', []):
@@ -470,62 +533,9 @@ def webhook():
                     if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN:
                         continue
                     user_sessions[sender_id] = time.time()
-                    send_typing(sender_id)
 
-                    try:
-                        if 'postback' in event:
-                            payload = event['postback'].get('payload', '')
-                            if payload == 'GET_STARTED':
-                                user = get_user(sender_id)
-                                name = user.get('name') or 'there'
-                                send_message(sender_id, f"👋 **Welcome {name}!**\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!")
-                                continue
-
-                            if payload.startswith("details_"):
-                                product = payload.replace("details_", "")
-                                if product in PRODUCT_MAP:
-                                    p = PRODUCT_MAP[product]
-                                    tracked_link = get_tracked_link(p['shopee'], sender_id, product)
-                                    text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
-                                    buttons = [
-                                        {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}, 
-                                        {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"[:1000]}
-                                    ]
-                                    send_button_template(sender_id, text, buttons)
-                                continue
-
-                            if payload.startswith("compare_"):
-                                product = payload.replace("compare_", "")
-                                if product in PRODUCT_MAP:
-                                    p = PRODUCT_MAP[product]
-                                    send_message(sender_id, f"📊 **{p['name']} Price Tips:**\n\n1. Check Shopee Mall for vouchers\n2. Add to cart during 15.15 / 25 sale\n3. Use student voucher for extra 10% off\nNeed the link again? Type `{product}`")
-                                continue
-
-                            if payload == "shop":
-                                tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "shop")
-                                send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
-                                continue
-
-                        if 'message' in event and 'attachments' in event['message']:
-                            send_message(sender_id, "I can only reply to text messages for now 😅")
-                            continue
-
-                        if 'message' in event and 'text' in event['message']:
-                            user_message = event['message']['text']
-                            cmd = handle_commands(user_message, sender_id)
-                            if isinstance(cmd, dict):
-                                send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
-                            elif cmd:
-                                send_message(sender_id, cmd)
-                            else:
-                                ai = ask_groq(user_message, sender_id)
-                                send_message(sender_id, ai)
-
-                    except Exception as e:
-                        print(f"ERROR for {sender_id}:", e)
-                        send_message(sender_id, "Error 😅")
-                    finally:
-                        send_typing(sender_id, "typing_off")
+                    # Process messaging event asynchronously so Facebook gets immediate 200 OK
+                    threading.Thread(target=process_event, args=(event,)).start()
 
         return "ok", 200
 
