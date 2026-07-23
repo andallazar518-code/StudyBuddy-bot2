@@ -301,15 +301,32 @@ def handle_incoming_message(sender_id, text):
         f"Sige, {text.strip()}! 🙋‍♀️ Na-update na ang name mo. From now on,"
         " I'll be calling you by your new name! 😊 Kamusta? Anong plano mo"
         " ngayon?",
+        quick_replies=[
+            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+            {
+                "content_type": "text",
+                "title": "🧠 Clear Memory",
+                "payload": "clear_memory",
+            },
+        ],
     )
     return
 
-  # 2. Handle simple commands or standard chat greetings with Quick Replies restored
+  # 2. Handle simple commands or standard chat greetings with Set Name, Shop, and Clear Memory included
   if text_lower in ["hi", "hello", "start", "set name"]:
     if text_lower == "set name":
       update_user(sender_id, {"waiting_for_name": True})
       send_message(
-          sender_id, "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬"
+          sender_id,
+          "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬",
+          quick_replies=[
+              {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+              {
+                  "content_type": "text",
+                  "title": "🧠 Clear Memory",
+                  "payload": "clear_memory",
+              },
+          ],
       )
       return
 
@@ -324,6 +341,11 @@ def handle_incoming_message(sender_id, text):
                 "content_type": "text",
                 "title": "📝 Set Name",
                 "payload": "set_name",
+            },
+            {
+                "content_type": "text",
+                "title": "🧠 Clear Memory",
+                "payload": "clear_memory",
             },
         ],
     )
@@ -359,7 +381,20 @@ def handle_incoming_message(sender_id, text):
     )
 
   update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
-  send_message(sender_id, bot_reply)
+  
+  # Always show 🛒 Shop and 🧠 Clear Memory on regular chat responses
+  send_message(
+      sender_id,
+      bot_reply,
+      quick_replies=[
+          {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+          {
+              "content_type": "text",
+              "title": "🧠 Clear Memory",
+              "payload": "clear_memory",
+          },
+      ],
+  )
 
 
 def handle_postback(sender_id, payload):
@@ -368,23 +403,56 @@ def handle_postback(sender_id, payload):
         sender_id,
         "Check out our main store and vouchers here:"
         f" {MAIN_SHOPEE_STORE}",
+        quick_replies=[
+            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+            {
+                "content_type": "text",
+                "title": "🧠 Clear Memory",
+                "payload": "clear_memory",
+            },
+        ],
     )
   elif payload == "set_name":
     update_user(sender_id, {"waiting_for_name": True})
     send_message(
-        sender_id, "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬"
+        sender_id,
+        "Sige! Anong bagong name mo? I-type mo lang dito. 📝💬",
+        quick_replies=[
+            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+            {
+                "content_type": "text",
+                "title": "🧠 Clear Memory",
+                "payload": "clear_memory",
+            },
+        ],
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0})
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
+        quick_replies=[
+            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+            {
+                "content_type": "text",
+                "title": "🧠 Clear Memory",
+                "payload": "clear_memory",
+            },
+        ],
     )
   elif payload == "help":
     send_message(
         sender_id,
         "Puwede mo akong tanungin tungkol sa pag-aaral, o i-type ang 'Set"
         " Name' para palitan ang pangalan mo.",
+        quick_replies=[
+            {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+            {
+                "content_type": "text",
+                "title": "🧠 Clear Memory",
+                "payload": "clear_memory",
+            },
+        ],
     )
 
 
