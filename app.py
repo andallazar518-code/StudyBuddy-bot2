@@ -198,18 +198,20 @@ def handle_commands(user_message, sender_id):
             name = user_message.strip().title(); update_user(sender_id, {"name": name, "waiting_for_name": False}); return f"👋 Nice to meet you {name}! Got it saved 😊"
         if msg.startswith("shopee_"):
             product = msg.replace("shopee_", "")
-            if product in PRODUCT_MAP:
-                p = PRODUCT_MAP[product]
-                tracked_link = get_tracked_link(p['shopee'], sender_id, product)
-                send_button_template(sender_id, f"👉 **{p['name']}**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "Buy Now"}]); return None
-          if msg in ["yes", "y"]:
-        # NEW: If user says yes to "Need the link again?"
-        if user.get('last_interest') and user.get('last_bot_action') != "asked_promo":
-            last_product = str(user['last_interest']).lower()
-            for product in PRODUCT_MAP.keys():
-                if product in last_product:
-                    get_affiliate_reply(sender_id, product) # resend the card
-                    return None
+                    if product in PRODUCT_MAP:
+            p = PRODUCT_MAP[product]
+            tracked_link = get_tracked_link(p['shopee'], sender_id, product)
+            send_button_template(sender_id, f"👉 **{p['name']}**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "Buy Now"}])
+            update_user(sender_id, {"last_interest": product}) # <-- make sure this line exists too
+        
+        if msg in ["yes", "y"]:
+            # NEW: If user says yes to "Need the link again?"
+            if user.get('last_interest') and user.get('last_bot_action')!= "asked_promo":
+                last_product = str(user['last_interest']).lower()
+                for product in PRODUCT_MAP.keys():
+                    if product in last_product:
+                        get_affiliate_reply(sender_id, product) # resend the card
+                        return None
 
         # OLD: This is for promo "yes"
         if user.get('last_bot_action') == "asked_promo":
