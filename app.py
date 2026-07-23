@@ -199,7 +199,7 @@ def get_user(sender_id):
       fb_name = get_fb_name(sender_id)
       new_user = default.copy()
       new_user.update({"name": fb_name})
-      supabase.table("users").upsert(
+      supabase.table("users"].upsert(
           {**new_user, "conversation_history": _dump_history([])},
           on_conflict="sender_id",
       ).execute()
@@ -402,10 +402,16 @@ def handle_postback(sender_id, payload):
     )
   elif payload == "clear_memory":
     update_user(sender_id, {"conversation_history": [], "chat_count": 0})
+    # Special quick replies containing 'Set Name' ONLY for the clear_memory response message
+    clear_memory_quick_replies = [
+        {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+        {"content_type": "text", "title": "📝 Set Name", "payload": "set_name"},
+        {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
+    ]
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
-        quick_replies=standard_quick_replies,
+        quick_replies=clear_memory_quick_replies,
     )
   elif payload == "help":
     send_message(
