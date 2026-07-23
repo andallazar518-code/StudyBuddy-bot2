@@ -302,6 +302,9 @@ def handle_incoming_message(sender_id, text):
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
+  # Dynamic quick replies batay kung may name na ang user o wala pa
+  current_qr = welcome_quick_replies if not user.get("name") else standard_quick_replies
+
   if user.get("waiting_for_name"):
     update_user(
         sender_id, {"name": text.strip(), "waiting_for_name": False}
@@ -315,11 +318,10 @@ def handle_incoming_message(sender_id, text):
 
   if text_lower in ["hi", "hello", "start"]:
     name = user.get("name") or "there"
-    qr = welcome_quick_replies if not user.get("name") else standard_quick_replies
     send_message(
         sender_id,
         f"Hello {name}! 👋\n\n📚 Need school supplies? I have vouchers.\n\nWant it?",
-        quick_replies=qr,
+        quick_replies=current_qr,
     )
     return
 
@@ -355,11 +357,13 @@ def handle_incoming_message(sender_id, text):
   send_message(
       sender_id,
       bot_reply,
-      quick_replies=standard_quick_replies,
+      quick_replies=current_qr,
   )
 
 
 def handle_postback(sender_id, payload):
+  user = get_user(sender_id)
+  
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
@@ -371,13 +375,15 @@ def handle_postback(sender_id, payload):
       {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
   ]
 
+  current_qr = welcome_quick_replies if not user.get("name") else standard_quick_replies
+
   if payload == "shop":
     tracked_store_url = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "main_store")
     send_message(
         sender_id,
         "Check out our main store and vouchers here:"
         f" {tracked_store_url}",
-        quick_replies=standard_quick_replies,
+        quick_replies=current_qr,
     )
   elif payload == "set_name":
     update_user(sender_id, {"waiting_for_name": True})
@@ -397,7 +403,7 @@ def handle_postback(sender_id, payload):
     send_message(
         sender_id,
         "Puwede mo akong tanungin tungkol sa pag-aaral, o i-click ang Shop para sa mga school supplies.",
-        quick_replies=standard_quick_replies,
+        quick_replies=current_qr,
     )
 
 
