@@ -401,6 +401,9 @@ def webhook():
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event["sender"]["id"]
 
+                # Trigger typing indicator bubble
+                send_typing(sender_id, "typing_on")
+
                 # 1. Handle regular text messages
                 if "message" in messaging_event and "text" in messaging_event["message"]:
                     user_message = messaging_event["message"]["text"]
