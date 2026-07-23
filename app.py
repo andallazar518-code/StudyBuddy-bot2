@@ -31,6 +31,8 @@ supabase = (
 )
 user_sessions = {}
 SESSION_COOLDOWN = 1.2
+last_request_times = {}
+
 AFFILIATE_ID = "test123"
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/8fQz7TwnGa"
 
@@ -98,7 +100,6 @@ def get_dynamic_shopee_search_link(user_message, sender_id):
   query = " ".join(filtered_words) if filtered_words else user_message
   formatted_query = quote(query.strip())
   
-  # Naka-attach na ang keyword sa iyong Shopee Affiliate short link para pumasok ang komisyon
   base_search_url = f"{MAIN_SHOPEE_STORE}?keyword={formatted_query}"
   return base_search_url
 
@@ -167,7 +168,7 @@ def _load_history(raw):
 
 def _dump_history(hist):
   trimmed = []
-  for m in hist[-5:]:
+  for m in hist[-3:]:  # Trimmed down to 3 to keep token usage low
     m_copy = {
         "role": m.get("role", "user"),
         "content": str(m.get("content", ""))[:500],
@@ -280,19 +281,32 @@ def call_groq_api(messages):
       "model": "llama-3.3-70b-versatile",
       "messages": messages,
       "temperature": 0.7,
-      "max_tokens": 200,
+      "max_tokens": 150,  # Lowered slightly to save tokens
   }
-  try:
-    res = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        json=payload,
-        headers=headers,
-        timeout=12,
-    )
-    if res.status_code == 200:
-      return res.json()["choices"][0]["message"]["content"]
-  except requests.exceptions.RequestException as e:
-    print("GROQ API ERROR:", e)
+  
+  # Retry loop to automatically handle 429 rate limits
+  for attempt in range(3):
+    try:
+      res = requests.post(
+          "https://api.groq.com/openai/v1/chat/completions",
+          json=payload,
+          headers=headers,
+          timeout=12,
+      )
+      if res.status_code == 200:
+        return res.json()["choices"][0]["message"]["content"]
+      elif res.status_code == 429:
+        sleep_time = (attempt + 1) * 2
+        print(f"Rate limited (429). Retrying in {sleep_time}s...")
+        time.sleep(sleep_time)
+        continue
+      else:
+        print("GROQ API ERROR CODE:", res.status_code)
+        break
+    except requests.exceptions.RequestException as e:
+      print("GROQ API ERROR:", e)
+      time.sleep(2)
+
   return (
       "I'm having a little trouble thinking right now. Please try again in a"
       " moment! 😅"
@@ -300,6 +314,12 @@ def call_groq_api(messages):
 
 
 def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
+  # Enforce session cooldown to prevent rapid spam
+  last_time = last_request_times.get(sender_id, 0)
+  if time.time() - last_time < SESSION_COOLDOWN:
+    return
+  last_request_times[sender_id] = time.time()
+
   user = get_user(sender_id)
   text_lower = text.strip().lower()
   qr_text_lower = qr_text.strip().lower()
@@ -373,7 +393,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
       ),
   }
 
-  ai_messages = [system_prompt] + history[-5:]
+  ai_messages = [system_prompt] + history[-3:]  # Reduced to last 3 messages to save tokens
   bot_reply = call_groq_api(ai_messages)
 
   if matched_product:
