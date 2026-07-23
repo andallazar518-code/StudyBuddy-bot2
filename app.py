@@ -6,6 +6,7 @@ import random
 import re
 import threading
 import time
+from urllib.parse import quote
 from flask import Flask, abort, request
 import requests
 from supabase import create_client
@@ -47,10 +48,10 @@ PRODUCT_MAP = {
         "benefit": "Thick 70gsm paper",
     },
     "laptop": {
-        "name": "Recommended Laptop",
+        "name": "Lenovo Ideapad 3 Laptop",
         "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9",
         "hook": "Need a laptop for school & work? 💻",
-        "benefit": "Budget-friendly. Intel i7",
+        "benefit": "Budget-friendly. Intel i3",
     },
     "mouse": {
         "name": "Wireless Silent Mouse",
@@ -97,7 +98,7 @@ def get_dynamic_shopee_search_link(user_message, sender_id):
   filtered_words = [w for w in words if w not in stop_words]
   
   query = " ".join(filtered_words) if filtered_words else user_message
-  formatted_query = query.strip().replace(" ", "%20")
+  formatted_query = quote(query.strip())
   base_search_url = f"https://s.shopee.ph/search?keyword={formatted_query}"
   return get_tracked_link(base_search_url, sender_id, "dynamic_search")
 
@@ -486,7 +487,7 @@ def webhook():
             if messaging.get("message"):
               msg = messaging["message"]
               text = msg.get("text", "")
-              qr_payload = msg.get("quick_reply", {}).get("payload")
+              qr_payload = messaging.get("message", {}).get("quick_reply", {}).get("payload")
               qr_text = msg.get("text", "") if qr_payload else ""
               if text or qr_payload:
                 handle_incoming_message(sender_id, text, quick_reply_payload=qr_payload, qr_text=qr_text)
