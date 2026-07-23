@@ -169,7 +169,7 @@ def _load_history(raw):
 
 def _dump_history(hist):
   trimmed = []
-  for m in hist[-5:]:
+  for m in hist[-8:]:
     m_copy = {
         "role": m.get("role", "user"),
         "content": str(m.get("content", ""))[:500],
@@ -308,7 +308,7 @@ def call_groq_api(messages):
         "model": plan["model"],
         "messages": messages,
         "temperature": 0.7,
-        "max_tokens": 150,
+        "max_tokens": 300,
     }
     
     for attempt in range(2):
