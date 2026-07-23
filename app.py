@@ -32,54 +32,54 @@ supabase = (
 user_sessions = {}
 SESSION_COOLDOWN = 1.2
 AFFILIATE_ID = "studybuddy"
-MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
+MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr"
 
 PRODUCT_MAP = {
     "calculator": {
         "name": "Casio fx-991EX Scientific Calculator",
-        "shopee": "https://s.shopee.ph/903Zywb2BV?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/903Zywb2BV",
         "hook": "Struggling with complex math? 📐",
         "benefit": "Approved for board exams. 552 functions",
     },
     "notebook": {
         "name": "National Notebook 80 Leaves",
-        "shopee": "https://s.shopee.ph/BSBSox6US?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/BSBSox6US",
         "hook": "Ink keeps bleeding through? 📓",
         "benefit": "Thick 70gsm paper",
     },
     "laptop": {
         "name": "Lenovo Ideapad 3 Laptop",
-        "shopee": "https://s.shopee.ph/9AN0C8jKBb?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/9AN0C8jKBb",
         "hook": "Need a laptop for school & work? 💻",
         "benefit": "Budget-friendly. Intel i3",
     },
     "mouse": {
         "name": "Wireless Silent Mouse",
-        "shopee": "https://s.shopee.ph/7pKqL9xAbc?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/7pKqL9xAbc",
         "hook": "Wrist pain from clicking? 🖱️",
         "benefit": "Ergonomic design. Silent click",
     },
     "keyboard": {
         "name": "RGB Mechanical Keyboard",
-        "shopee": "https://s.shopee.ph/8rLmN2pQrs?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/8rLmN2pQrs",
         "hook": "Want faster typing? ⌨️",
         "benefit": "Blue switches. Plug and play",
     },
     "headset": {
         "name": "Gaming Headset with Noise Cancelling Mic",
-        "shopee": "https://s.shopee.ph/4wZxY6vTuv?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/4wZxY6vTuv",
         "hook": "Can't hear clearly in online class? 🎧",
         "benefit": "Crystal clear mic",
     },
     "bag": {
         "name": "JanSport SuperBreak Backpack",
-        "shopee": "https://s.shopee.ph/5AqrQ58Yd1?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/5AqrQ58Yd1",
         "hook": "Bag keeps getting wet? 🎒",
         "benefit": "Water resistant. 15L capacity",
     },
     "lamp": {
         "name": "LED Desk Study Lamp with USB",
-        "shopee": "https://s.shopee.ph/2Vq6FK56cb?smtt=0.0.9",
+        "shopee": "https://s.shopee.ph/2Vq6FK56cb",
         "hook": "Eyes getting tired at night? 💡",
         "benefit": "3 light modes. Eye protection",
     },
@@ -87,10 +87,8 @@ PRODUCT_MAP = {
 
 
 def get_tracked_link(base_url, sender_id, product="store"):
-  tracker = f"aff_id={AFFILIATE_ID}_{sender_id}_{product}"
-  separator = "&" if "?" in base_url else "?"
-  full_url = f"{base_url}{separator}{tracker}"
-  return full_url.replace(" ", "")
+  # Ibalik nang direkta ang base_url para hindi masira ng custom query ang Shopee short link
+  return base_url.strip()
 
 
 def get_dynamic_shopee_search_link(user_message, sender_id):
@@ -100,8 +98,8 @@ def get_dynamic_shopee_search_link(user_message, sender_id):
   
   query = " ".join(filtered_words) if filtered_words else user_message
   formatted_query = quote(query.strip())
-  base_search_url = f"https://s.shopee.ph/search?keyword={formatted_query}"
-  return get_tracked_link(base_search_url, sender_id, "dynamic_search")
+  base_search_url = f"https://shopee.ph/search?keyword={formatted_query}"
+  return base_search_url
 
 
 def setup_menu():
