@@ -1,5 +1,15 @@
-from flask import Flask, request, abort import requests, os, time, random, re, json, hashlib, hmac, threading
+from flask import Flask, request, abort
+import requests
+import os
+import time
+import random
+import re
+import json
+import hashlib
+import hmac
+import threading
 from supabase import create_client
+
 app = Flask(__name__)
 
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
@@ -82,7 +92,6 @@ def get_user(sender_id):
         if data and getattr(data, 'data', None):
             user = data.data[0]
             user['conversation_history'] = _load_history(user.get('conversation_history'))
-            # FIX: Force get name if wala
             if not user.get('name'):
                 fb_name = get_fb_name(sender_id)
                 if fb_name:
