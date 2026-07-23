@@ -304,7 +304,7 @@ def handle_incoming_message(sender_id, text):
     )
     return
 
-  # 2. Handle simple commands or standard chat greetings
+  # 2. Handle simple commands or standard chat greetings with Quick Replies restored
   if text_lower in ["hi", "hello", "start", "set name"]:
     if text_lower == "set name":
       update_user(sender_id, {"waiting_for_name": True})
@@ -396,17 +396,21 @@ def webhook():
       return abort(403)
     data = request.get_json()
     if data.get("object") == "page":
-      for entry in data.get("entry", []):
-        for messaging in entry.get("messaging", []):
-          sender_id = messaging.get("sender", {}).get("id")
-          if messaging.get("message"):
-            text = messaging["message"].get("text", "")
-            if text:
-              handle_incoming_message(sender_id, text)
-          elif messaging.get("postback"):
-            payload = messaging["postback"].get("payload")
-            if payload:
-              handle_postback(sender_id, payload)
+      try:
+        for entry in data.get("entry", []):
+          for messaging in entry.get("messaging", []):
+            sender_id = messaging.get("sender", {}).get("id")
+            if messaging.get("message"):
+              text = messaging["message"].get("text", "")
+              if text:
+                handle_incoming_message(sender_id, text)
+            elif messaging.get("postback"):
+              payload = messaging["postback"].get("payload")
+              if payload:
+                handle_postback(sender_id, payload)
+      except Exception as e:
+        print("WEBHOOK PROCESSING ERROR:", e)
+
       return "EVENT_RECEIVED", 200
     return abort(404)
 
