@@ -168,7 +168,7 @@ def _load_history(raw):
 
 def _dump_history(hist):
   trimmed = []
-  for m in hist[-3:]:
+  for m in hist[-4:]:
     m_copy = {
         "role": m.get("role", "user"),
         "content": str(m.get("content", ""))[:500],
