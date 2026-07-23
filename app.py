@@ -197,32 +197,36 @@ def handle_commands(user_message, sender_id):
         new_count = user.get('chat_count', 0) + 1 if msg not in skip_count else user.get('chat_count', 0)
         update_user(sender_id, {"chat_count": new_count})
 
-        # FIXED SET NAME COMMAND
-        if msg in ["set_name", "set name", "change name", "name"]:
+        # FIXED: ENGLISH SET NAME COMMAND
+        if msg in ["set_name", "set name", "change name", "my name is"]:
             fb_name = get_fb_name(sender_id)
             if fb_name:
                 update_user(sender_id, {"name": fb_name})
-                return f"👋 Name updated to {fb_name}! Saved na 😊"
+                return f"👋 Got it! Your name is now {fb_name}. Saved! 😊"
             update_user(sender_id, {"waiting_for_name": True})
-            return "Sige ano name mo? Type mo lang dito 👇"
+            return "I couldn't get your name from Facebook 😅 Please type your name here:"
 
         if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in skip_count:
             name = user_message.strip().title()
             update_user(sender_id, {"name": name, "waiting_for_name": False})
-            return f"👋 Nice to meet you {name}! Got it saved 😊"
+            return f"👋 Nice to meet you {name}! I've saved it 😊"
 
         if msg in ["help"]:
             return """📚 **StudyBuddy Commands:**
 `Shop` - Browse products
-`Set Name` - Update name from FB
-`Clear Memory` - Reset AI
-`calculator/laptop` - Product info"""
+`Set Name` - Update your name
+`Clear Memory` - Reset AI memory
+`calculator` / `laptop` - Get product info"""
 
         if msg in ["clear memory", "reset memory", "clear_memory"]:
             update_user(sender_id, {"conversation_history": [], "last_interest": None, "chat_count": 0, "auto_sent": False})
             return "🧠 Memory cleared! Fresh start 😊"
 
-        if "@meta ai" in raw_msg.lower() or "open link" in msg:
+        # FIXED: Ignore @Meta AI so it won't trigger shop
+        if "@meta ai" in raw_msg.lower():
+            return "You can just type `set name` directly 😊 No need to tag @Meta AI"
+
+        if "open link" in msg:
             if user.get('rejected_affiliate'): return "Got it! 😊 I'll stop asking about supplies for 24 hours."
             tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "openlink")
             send_button_template(sender_id, "🛒 Here's my student essentials store:\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
