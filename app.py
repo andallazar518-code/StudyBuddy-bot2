@@ -196,30 +196,37 @@ def handle_commands(user_message, sender_id):
         if msg in ["clear memory", "reset memory"]: update_user(sender_id, {"conversation_history": [], "last_interest": None}); return "🧠 Memory cleared! Fresh start 😊"
         if user.get('waiting_for_name') and 1 <= len(msg.split()) <= 3 and msg not in skip_count:
             name = user_message.strip().title(); update_user(sender_id, {"name": name, "waiting_for_name": False}); return f"👋 Nice to meet you {name}! Got it saved 😊"
+        
+        # FIX 1: Correctly indented shopee_ handler
         if msg.startswith("shopee_"):
             product = msg.replace("shopee_", "")
-                    if product in PRODUCT_MAP:
-            p = PRODUCT_MAP[product]
-            tracked_link = get_tracked_link(p['shopee'], sender_id, product)
-            send_button_template(sender_id, f"👉 **{p['name']}**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "Buy Now"}])
-            update_user(sender_id, {"last_interest": product}) # <-- make sure this line exists too
+            if product in PRODUCT_MAP:
+                p = PRODUCT_MAP[product]
+                tracked_link = get_tracked_link(p['shopee'], sender_id, product)
+                send_button_template(sender_id, f"👉 **{p['name']}**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "Buy Now"}])
+                update_user(sender_id, {"last_interest": product})
+            return None
         
+        # FIX 2: Correctly nested promo "yes" block inside "yes" conditional
         if msg in ["yes", "y"]:
             # NEW: If user says yes to "Need the link again?"
-            if user.get('last_interest') and user.get('last_bot_action')!= "asked_promo":
+            if user.get('last_interest') and user.get('last_bot_action') != "asked_promo":
                 last_product = str(user['last_interest']).lower()
                 for product in PRODUCT_MAP.keys():
                     if product in last_product:
                         get_affiliate_reply(sender_id, product) # resend the card
                         return None
 
-        # OLD: This is for promo "yes"
-        if user.get('last_bot_action') == "asked_promo":
-            if user.get('rejected_affiliate'): update_user(sender_id, {"last_bot_action": None}); return "No problem! 😊 I won't send store links until the 24 hours are up."
-            update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": None})
-            tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "promo")
-            send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}]); return None
-        update_user(sender_id, {"last_bot_action": None}); return None
+            # OLD: This is for promo "yes"
+            if user.get('last_bot_action') == "asked_promo":
+                if user.get('rejected_affiliate'): update_user(sender_id, {"last_bot_action": None}); return "No problem! 😊 I won't send store links until the 24 hours are up."
+                update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": None})
+                tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "promo")
+                send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}]); return None
+            
+            update_user(sender_id, {"last_bot_action": None})
+            return None
+
         if msg in ["no", "n", "no need", "not now", "pass", "later"]:
             if user.get('last_bot_action') == "asked_promo": update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "waiting_for_name": False, "last_bot_action": None}); return "Got it! 😊 I'll stop asking about supplies for 24 hours."
             update_user(sender_id, {"last_bot_action": None}); return None
