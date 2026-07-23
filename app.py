@@ -14,9 +14,8 @@ app = Flask(__name__)
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 VERIFY_TOKEN = "TUBO2026"
-APP_SECRET = os.environ.get("FB_APP_SECRET") # add this in env for signature check
+APP_SECRET = os.environ.get("FB_APP_SECRET")
 
-# = DB SETUP =
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
@@ -37,7 +36,7 @@ PRODUCT_MAP = {
 }
 
 def verify_signature(req):
-    if not APP_SECRET: return True # skip if not set
+    if not APP_SECRET: return True
     signature = req.headers.get("X-Hub-Signature-256", "")
     if not signature: return False
     hash = hmac.new(APP_SECRET.encode(), req.data, hashlib.sha256).hexdigest()
@@ -103,6 +102,21 @@ def send_message(sender_id, text, quick_replies=None):
     try: requests.post(url, json=payload, timeout=10)
     except Exception as e: print(f"Send error for {sender_id}:", e)
 
+def send_button_template(sender_id, text, buttons):
+    if not PAGE_ACCESS_TOKEN: return
+    url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
+    payload = {
+        "recipient": {"id": sender_id},
+        "message": {
+            "attachment": {
+                "type": "template",
+                "payload": {"template_type": "button", "text": text[:640], "buttons": buttons}
+            }
+        }
+    }
+    try: requests.post(url, json=payload, timeout=10)
+    except Exception as e: print(f"Button send error:", e)
+
 def send_typing(sender_id, action="typing_on"):
     if not PAGE_ACCESS_TOKEN: return
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
@@ -117,30 +131,35 @@ def check_affiliate_intent(msg):
     msg = msg.lower()
     product_words = list(PRODUCT_MAP.keys())
     buy_words = ["buy", "shop", "shopee", "price", "link", "gear", "order", "store"]
+    if msg in ["yes", "y", "no", "n"]: return False
     return any(w in msg for w in product_words) or any(w in msg for w in buy_words)
 
-def get_affiliate_reply(msg):
+def get_affiliate_reply(sender_id, msg): # FIXED: added sender_id
     msg = msg.lower()
     for product, p in PRODUCT_MAP.items():
         if re.search(r'\b' + re.escape(product) + r'\b', msg):
-            qr = [{"content_type":"text", "title":"👉 View Item", "payload":f"shopee_{product}"},
-                  {"content_type":"text", "title":"📎 See All", "payload":"shop"}]
             text = f"💡 **{p['name']}**\n\n{p['hook']}\n\n✅ **Why students like it:** {p['benefit']}\n\n*Disclosure: Affiliate link*"
-            return {"text": text, "quick_replies": qr}
+            buttons = [
+                {"type": "web_url", "url": p['shopee'], "title": "👉 View on Shopee"},
+                {"type": "postback", "title": "📎 See All", "payload": "shop"}
+            ]
+            send_button_template(sender_id, text, buttons)
+            return True
     if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
-        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
-        return {"text": f"🛒 **Student Essentials Store**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
-    return None
+        text = f"🛒 **Student Essentials Store**\n\nBrowse all student vouchers here.\n\n*Disclosure: Affiliate link*"
+        buttons = [{"type": "web_url", "url": MAIN_SHOPEE_STORE, "title": "🛒 Open Store"}]
+        send_button_template(sender_id, text, buttons)
+        return True
+    return False
 
 def handle_commands(user_message, sender_id):
     msg = user_message.lower().strip()
     raw_msg = user_message
     user = get_user(sender_id)
 
-    # Reset 24hr rejection + auto_sent cooldown
     now = time.time()
     if user.get('reject_time') and now - user['reject_time'] > 86400:
-        update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None})
+        update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None, "last_promo_time": None})
         user = get_user(sender_id)
     if user.get('last_promo_time') and now - user['last_promo_time'] > 86400:
         update_user(sender_id, {"auto_sent": False})
@@ -150,8 +169,10 @@ def handle_commands(user_message, sender_id):
     update_user(sender_id, {"chat_count": new_count})
 
     if "@meta ai" in raw_msg.lower() or "open link" in msg:
-        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
-        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+        if user.get('rejected_affiliate'):
+            return "Got it! 😊 I'll stop asking about supplies for 24 hours."
+        send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": MAIN_SHOPEE_STORE, "title": "🛒 Open Store"}])
+        return None
 
     if msg in ["clear memory", "reset memory"]:
         update_user(sender_id, {"conversation_history": [], "last_interest": None})
@@ -166,12 +187,15 @@ def handle_commands(user_message, sender_id):
         product = msg.replace("shopee_", "")
         if product in PRODUCT_MAP:
             p = PRODUCT_MAP[product]
-            return f"👉 **{p['name']}**\n{p['shopee']}\n\n*Disclosure: Affiliate link*"
+            send_button_template(sender_id, f"👉 **{p['name']}**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": p['shopee'], "title": "Buy Now"}])
+            return None
 
     if msg in ["yes", "y"]:
-        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
+        if user.get('rejected_affiliate'):
+            return "No problem! 😊 I won't send store links until the 24 hours are up."
         update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
-        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+        send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": MAIN_SHOPEE_STORE, "title": "🛒 Open Store"}])
+        return None
 
     if msg in ["no", "n", "no need", "not now", "pass", "later"]:
         update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "waiting_for_name": False})
@@ -182,7 +206,7 @@ def handle_commands(user_message, sender_id):
         return "👋 Name reset! What's your name?"
 
     if msg.startswith("setname_"):
-        fb_name = get_fb_name(sender_id) # FIXED: actually get real FB name
+        fb_name = get_fb_name(sender_id)
         name = fb_name or "Friend"
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Nice to meet you {name}! Got it saved 😊"
@@ -202,6 +226,12 @@ def handle_commands(user_message, sender_id):
         update_user(sender_id, {"name": name, "waiting_for_name": False})
         return f"👋 Welcome {name}! Nice to meet you 😊"
 
+    if msg == "shop":
+        if user.get('rejected_affiliate'):
+            return "Got it! 😊 I'll stop asking about supplies for 24 hours. Type `help` for other commands."
+        send_button_template(sender_id, f"🛒 **Here's my student essentials store:**\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": MAIN_SHOPEE_STORE, "title": "🛒 Open Store"}])
+        return None
+
     if msg in ["hi", "hello", "hey"]:
         name = user.get('name')
         if user.get('last_interest') and name:
@@ -212,23 +242,18 @@ def handle_commands(user_message, sender_id):
             qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
             update_user(sender_id, {"waiting_for_name": True})
             return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
-
-        # Auto promo every 8 chats
         if new_count % 8 == 0 and not user.get('rejected_affiliate') and not user.get('auto_sent'):
             update_user(sender_id, {"auto_sent": True, "last_promo_time": now})
             qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
             return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
-        return f"**StudyBuddy v14.34 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
-
-    if msg == "shop":
-        qr = [{"content_type":"text", "title":"🛒 Open Store", "payload":"shop"}]
-        return {"text": f"🛒 **Here's my student essentials store:**\n\n{MAIN_SHOPEE_STORE}\n\n*Disclosure: Affiliate link*", "quick_replies": qr}
+        return f"**StudyBuddy v14.37 EN** 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
 
     if not user.get('rejected_affiliate'):
         if check_affiliate_intent(msg):
             update_user(sender_id, {"last_interest": user_message})
-            affiliate_reply = get_affiliate_reply(msg)
-            if affiliate_reply: return affiliate_reply
+            if get_affiliate_reply(sender_id, msg): # FIXED: pass sender_id
+                return None
+
     if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
         return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
     return None
@@ -240,7 +265,7 @@ def ask_groq(user_message, sender_id):
         return "I can't share that due to copyright 😅 But you can ask me anything else!"
     history = user.get('conversation_history', [])
     if should_save_to_memory(user_message): history.append({"role": "user", "content": user_message})
-    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.34 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
+    messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.37 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
     messages.extend(history[-10:])
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
@@ -264,7 +289,7 @@ def webhook():
             return request.args.get("hub.challenge"), 200
         return "Error", 403
     if request.method == 'POST':
-        if not verify_signature(request): abort(403) # SECURITY
+        if not verify_signature(request): abort(403)
         data = request.get_json()
         if data.get('object') == 'page':
             for entry in data.get('entry', []):
@@ -297,4 +322,4 @@ def webhook():
         return "ok", 200
 
 @app.route('/', methods=['GET'])
-def home(): return "StudyBuddy v14.34", 200
+def home(): return "StudyBuddy v14.37", 200
