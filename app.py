@@ -409,8 +409,16 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
       ),
   }
 
-  ai_messages = [system_prompt] + history[-3:]
-  bot_reply = call_groq_api(ai_messages)
+  # --- QUICK MATH INTERCEPTOR ---
+  math_match = re.search(r"(\d+)\s*[\*xX]\s*(\d+)", text)
+  if math_match:
+    num1 = int(math_match.group(1))
+    num2 = int(math_match.group(2))
+    exact_result = num1 * num2
+    bot_reply = f"{text.strip()} = {exact_result:,}"
+  else:
+    ai_messages = [system_prompt] + history[-3:]
+    bot_reply = call_groq_api(ai_messages)
 
   if matched_product:
     pkey, pval = matched_product
