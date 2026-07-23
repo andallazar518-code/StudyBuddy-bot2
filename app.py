@@ -13,13 +13,14 @@ if not PAGE_ACCESS_TOKEN or not GROQ_API_KEY:
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN", "TUBO2026")
 APP_SECRET = os.environ.get("FB_APP_SECRET")
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
 user_sessions = {}
 SESSION_COOLDOWN = 1.2
+
 AFFILIATE_ID = "studybuddy"
 MAIN_SHOPEE_STORE = "https://s.shopee.ph/qhsFU3xcr?smtt=0.0.9"
 
@@ -82,8 +83,7 @@ def get_tracked_link(base_url, sender_id, product="store"):
 
 def verify_signature(req):
     if not APP_SECRET:
-        # In production, require APP_SECRET. Set to False if missing for strict security.
-        return True 
+        return True
     signature = req.headers.get("X-Hub-Signature-256", "")
     if not signature:
         return False
@@ -121,16 +121,16 @@ def _dump_history(hist):
 
 def get_user(sender_id):
     default = {
-        "sender_id": sender_id, 
-        "name": None, 
-        "chat_count": 0, 
-        "rejected_affiliate": False, 
-        "reject_time": None, 
-        "auto_sent": False, 
-        "last_promo_time": None, 
-        "waiting_for_name": False, 
-        "conversation_history": [], 
-        "last_interest": None, 
+        "sender_id": sender_id,
+        "name": None,
+        "chat_count": 0,
+        "rejected_affiliate": False,
+        "reject_time": None,
+        "auto_sent": False,
+        "last_promo_time": None,
+        "waiting_for_name": False,
+        "conversation_history": [],
+        "last_interest": None,
         "last_bot_action": None
     }
     if not supabase:
@@ -184,13 +184,13 @@ def send_button_template(sender_id, text, buttons):
         return
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
-        "recipient": {"id": sender_id}, 
+        "recipient": {"id": sender_id},
         "message": {
             "attachment": {
-                "type": "template", 
+                "type": "template",
                 "payload": {
-                    "template_type": "button", 
-                    "text": text[:640], 
+                    "template_type": "button",
+                    "text": text[:640],
                     "buttons": buttons
                 }
             }
@@ -208,24 +208,25 @@ def send_product_carousel(sender_id):
     for product, p in list(PRODUCT_MAP.items())[:4]:
         tracked_link = get_tracked_link(p['shopee'], sender_id, product)
         elements.append({
-            "title": p['name'][:80], 
-            "subtitle": p['hook'][:80], 
+            "title": p['name'][:80],
+            "subtitle": p['hook'][:80],
             "buttons": [
-                {"type": "web_url", "url": tracked_link, "title": "👉 Buy Now"}, 
+                {"type": "web_url", "url": tracked_link, "title": "👉 Buy Now"},
                 {"type": "postback", "title": "🔍 Details", "payload": f"details_{product}"[:1000]}
             ]
         })
     if not elements:
         send_message(sender_id, "No products available right now!")
         return
+
     url = f"https://graph.facebook.com/v19.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
     payload = {
-        "recipient": {"id": sender_id}, 
+        "recipient": {"id": sender_id},
         "message": {
             "attachment": {
-                "type": "template", 
+                "type": "template",
                 "payload": {
-                    "template_type": "generic", 
+                    "template_type": "generic",
                     "elements": elements
                 }
             }
@@ -264,30 +265,52 @@ def get_affiliate_reply(sender_id, msg):
             tracked_link = get_tracked_link(p['shopee'], sender_id, product)
             text = f"💡 {p['name']}\n\n{p['hook']}\n\n✅ Why students like it: {p['benefit']}\n\n*Disclosure: Affiliate link*"
             buttons = [
-                {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}, 
-                {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"[:1000]}, 
+                {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"},
+                {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"[:1000]},
                 {"type": "postback", "title": "📎 See All", "payload": "shop"}
             ]
             send_button_template(sender_id, text, buttons)
             return True
+
     if any(k in msg for k in ["buy", "shop", "shopee", "gear", "store"]):
         tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "store")
         text = f"🛒 Student Essentials Store\n\nBrowse all student vouchers here.\n\n*Disclosure: Affiliate link*"
         buttons = [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}]
         send_button_template(sender_id, text, buttons)
         return True
+
     return False
+
+def call_groq_api(messages):
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 500
+    }
+    try:
+        res = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=12)
+        if res.status_code == 200:
+            return res.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        print("GROQ API ERROR:", e)
+    return "I'm having a little trouble thinking right now. Please try again in a moment! 😅"
 
 def handle_commands(user_message, sender_id):
     try:
         msg = user_message.lower().strip()
         raw_msg = user_message
         user = get_user(sender_id)
-        now = time.time()
 
+        now = time.time()
         if user.get('reject_time') and now - user['reject_time'] > 86400:
             update_user(sender_id, {"rejected_affiliate": False, "auto_sent": False, "reject_time": None, "last_promo_time": None})
             user = get_user(sender_id)
+
         if user.get('last_promo_time') and now - user['last_promo_time'] > 86400:
             update_user(sender_id, {"auto_sent": False})
             user = get_user(sender_id)
@@ -317,228 +340,107 @@ def handle_commands(user_message, sender_id):
             if product in PRODUCT_MAP:
                 p = PRODUCT_MAP[product]
                 tracked_link = get_tracked_link(p['shopee'], sender_id, product)
-                send_button_template(sender_id, f"👉 {p['name']}\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "Buy Now"}])
-                update_user(sender_id, {"last_interest": product})
-            return None
-
-        if msg in ["yes", "y"]:
-            if user.get('last_interest') and user.get('last_bot_action') != "asked_promo":
-                last_product = str(user['last_interest']).lower()
-                for product in PRODUCT_MAP.keys():
-                    if product in last_product:
-                        get_affiliate_reply(sender_id, product)
-                        return None
-            if user.get('last_bot_action') == "asked_promo":
-                if user.get('rejected_affiliate'):
-                    update_user(sender_id, {"last_bot_action": None})
-                    return "No problem! 😊 I won't send store links until the 24 hours are up."
-                update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": None})
-                tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "promo")
-                send_button_template(sender_id, "🛒 Here's my student essentials store:\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
+                send_button_template(sender_id, f"👉 {p['name']}\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}])
                 return None
-            update_user(sender_id, {"last_bot_action": None})
-            return "How can I help you today? 😊"
 
-        if msg in ["no", "n", "no need", "not now", "pass", "later"]:
-            if user.get('last_bot_action') == "asked_promo":
-                update_user(sender_id, {"rejected_affiliate": True, "reject_time": now, "waiting_for_name": False, "last_bot_action": None})
-                return "Got it! 😊 I'll stop asking about supplies for 24 hours."
-            update_user(sender_id, {"last_bot_action": None})
-            return "Is there anything else I can help you with today? 😊"
-
-        if msg == "reset name":
-            update_user(sender_id, {"name": None, "waiting_for_name": True})
-            return "👋 Name reset! What's your name?"
-
-        if msg.startswith("setname_"):
-            fb_name = get_fb_name(sender_id) or "Friend"
-            update_user(sender_id, {"name": fb_name, "waiting_for_name": False})
-            return f"👋 Nice to meet you {fb_name}! Got it saved 😊"
-
-        if msg in ["help", "menu", "commands"]:
-            return "📚 StudyBuddy Commands:\n`Hi/Hello` - Greet\n`calculator/laptop/bag` - Product recommendation\n`shop` - Show recommended products\n`My name is [name]` - Save name\n`Reset name` - Change name\n`Clear memory` - Reset AI memory\n`Help` - Show this menu"
-
-        if "name is" in msg or "i am" in msg:
-            name = msg.replace("my name is", "").replace("name is", "").replace("i am", "").strip().title()
-            update_user(sender_id, {"name": name, "waiting_for_name": False})
-            return f"👋 Welcome {name}! Nice to meet you 😊"
-
-        if msg in ["shop", "recommend"]:
-            if user.get('rejected_affiliate'):
-                return "Got it! 😊 I'll stop asking about supplies for 24 hours. Type `help` for other commands."
-            send_message(sender_id, "🛒 Here are my top student picks for you:")
+        if msg in ["shop", "store", "essentials"]:
             send_product_carousel(sender_id)
             return None
 
         if msg in ["hi", "hello", "hey"]:
-            name = user.get('name')
-            if user.get('last_interest') and name:
-                last = str(user['last_interest']).lower()
-                if any(p in last for p in PRODUCT_MAP.keys()):
-                    return f"Hi {name}! 😊 How is the {user['last_interest']} you checked? Need the link again?"
-            if not name:
-                qr = [{"content_type":"text", "title":"👉 Set Name", "payload":"setname_User"}]
-                update_user(sender_id, {"waiting_for_name": True})
-                return {"text": "👋 Hi! Welcome to StudyBuddy PH 🤖\n\nTo make it personal, what's your name?", "quick_replies": qr}
+            user_name = user.get('name')
+            greeting = f"Hello {user_name}! 👋" if user_name else "Hello! 👋"
+            return f"{greeting} I'm StudyBuddy AI! How can I help you with your studies today?"
 
-            if new_count > 0 and new_count % 8 == 0 and not user.get('rejected_affiliate') and not user.get('auto_sent'):
-                update_user(sender_id, {"auto_sent": True, "last_promo_time": now, "last_bot_action": "asked_promo"})
-                qr = [{"content_type":"text", "title":"📎 Open Link", "payload":"shop"}, {"content_type":"text", "title":"❌ Pass", "payload":"no"}]
-                return {"text": f"Quick tip {name} 😊\nNeed school supplies? I have a curated list with student vouchers.\n\nWant it?\n\nReply: `yes` or `no`", "quick_replies": qr}
+        if get_affiliate_reply(sender_id, msg):
+            return None
 
-            return f"StudyBuddy v14.39.8 EN 🤖\nHi {name}!\n\nAsk me anything 😊 Type `help` for commands"
-
-        if not user.get('rejected_affiliate') and check_affiliate_intent(msg):
-            update_user(sender_id, {"last_interest": user_message})
-            if get_affiliate_reply(sender_id, msg):
-                return None
-
-        if any(w in msg for w in ["tired", "stress", "hard", "sad"]):
-            return random.choice(["Hang in there! Take a 5 min break ☕ You got this!", "You can do it! One step at a time 😊 I'm here for you"])
-
-    except Exception as e:
-        print("HANDLE COMMANDS CRASH:", e)
-        return "Oops I crashed 😅 Try typing again"
-
-    return None
-
-def ask_groq(user_message, sender_id):
-    try:
-        user = get_user(sender_id)
-        name = user.get('name') or "there"
-
-        if any(word in user_message.lower() for word in ["lyrics", "poem", "song"]):
-            return "I can't share that due to copyright 😅 But you can ask me anything else!"
-
+        # Groq Fallback Chat Engine
         history = user.get('conversation_history', [])
-        
-        messages = [{"role": "system", "content": f"You are StudyBuddy PH v14.39.8 EN. A friendly AI Assistant from the Philippines. Reply ONLY in English. Keep it under 8 sentences. User name: {name}"}]
-
-        # Append history context safely
-        recent_history = history[-10:]
-        for m in recent_history:
-            if isinstance(m, dict) and "role" in m and "content" in m:
-                messages.append({"role": str(m["role"]), "content": str(m["content"])})
-
-        if should_save_to_memory(user_message):
-            messages.append({"role": "user", "content": user_message})
-
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-        data = {
-            "model": "llama-3.3-70b-versatile", 
-            "messages": messages, 
-            "temperature": 0.7, 
-            "max_tokens": 300
+        system_prompt = {
+            "role": "system",
+            "content": f"You are StudyBuddy AI, a friendly and helpful Philippine student assistant. Speak in warm, conversational English with occasional light Taglish. User name: {user.get('name') or 'Friend'}."
         }
 
-        r = requests.post(url, headers=headers, json=data, timeout=15)
-        if r.status_code == 200:
-            ai_reply = r.json()['choices'][0]['message']['content']
-            if should_save_to_memory(user_message):
-                history.append({"role": "user", "content": user_message})
-                history.append({"role": "assistant", "content": ai_reply})
-                update_user(sender_id, {"conversation_history": history})
-            return ai_reply
-        else:
-            print(f"GROQ API HTTP ERROR {r.status_code}: {r.text}")
-            return f"The AI service is temporarily busy 😅 But I'm still here {name}. Try again in a moment!"
-    except Exception as e:
-        print(f"GROQ EXCEPTION for {sender_id}:", e)
-        return f"The AI had an error 😅 But I'm still here {name}. Try again."
+        messages = [system_prompt] + history + [{"role": "user", "content": user_message}]
+        reply = call_groq_api(messages)
 
-def process_event(event):
-    sender_id = event.get('sender', {}).get('id')
-    if not sender_id:
-        return
+        if should_save_to_memory(user_message):
+            updated_hist = history + [{"role": "user", "content": user_message}, {"role": "assistant", "content": reply}]
+            update_user(sender_id, {"conversation_history": updated_hist[-10:]})
 
-    send_typing(sender_id)
-
-    try:
-        if 'postback' in event:
-            payload = event['postback'].get('payload', '')
-            if payload == 'GET_STARTED':
-                user = get_user(sender_id)
-                name = user.get('name') or 'there'
-                send_message(sender_id, f"👋 Welcome {name}!\n\nI'm StudyBuddy PH 🤖\nYour AI study assistant.\n\nType `help` to see what I can do!")
-                return
-
-            if payload.startswith("details_"):
-                product = payload.replace("details_", "")
-                if product in PRODUCT_MAP:
-                    p = PRODUCT_MAP[product]
-                    tracked_link = get_tracked_link(p['shopee'], sender_id, product)
-                    text = f"💡 {p['name']}\n\n{p['hook']}\n\n✅ Why students like it: {p['benefit']}\n\n*Disclosure: Affiliate link*"
-                    buttons = [
-                        {"type": "web_url", "url": tracked_link, "title": "👉 View on Shopee"}, 
-                        {"type": "postback", "title": "🔍 Price Tips", "payload": f"compare_{product}"[:1000]}
-                    ]
-                    send_button_template(sender_id, text, buttons)
-                return
-
-            if payload.startswith("compare_"):
-                product = payload.replace("compare_", "")
-                if product in PRODUCT_MAP:
-                    p = PRODUCT_MAP[product]
-                    send_message(sender_id, f"📊 {p['name']} Price Tips:\n\n1. Check Shopee Mall for vouchers\n2. Add to cart during sale\n3. Use student voucher for extra off\nNeed the link again? Type `{product}`")
-                return
-
-            if payload == "shop":
-                tracked_link = get_tracked_link(MAIN_SHOPEE_STORE, sender_id, "shop")
-                send_button_template(sender_id, "🛒 Here's my student essentials store:\n\n*Disclosure: Affiliate link*", [{"type": "web_url", "url": tracked_link, "title": "🛒 Open Store"}])
-                return
-
-        if 'message' in event and 'attachments' in event['message']:
-            send_message(sender_id, "I can only reply to text messages for now 😅")
-            return
-
-        if 'message' in event and 'text' in event['message']:
-            user_message = event['message']['text']
-            cmd = handle_commands(user_message, sender_id)
-            if isinstance(cmd, dict):
-                send_message(sender_id, cmd["text"], cmd.get("quick_replies"))
-            elif cmd:
-                send_message(sender_id, cmd)
-            else:
-                ai = ask_groq(user_message, sender_id)
-                send_message(sender_id, ai)
+        return reply
 
     except Exception as e:
-        print(f"ERROR for {sender_id}:", e)
-        send_message(sender_id, "Error 😅")
-    finally:
-        send_typing(sender_id, "typing_off")
-
-@app.route('/webhook', methods=['GET', 'POST'])
-def webhook():
-    global user_sessions
-    if request.method == 'GET':
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge"), 200
-        return "Error", 403
-
-    if request.method == 'POST':
-        if not verify_signature(request):
-            abort(403)
-        data = request.get_json()
-        now = time.time()
-        user_sessions = {k: v for k, v in user_sessions.items() if now - v < 3600}
-
-        if data.get('object') == 'page':
-            for entry in data.get('entry', []):
-                for event in entry.get('messaging', []):
-                    sender_id = event.get('sender', {}).get('id')
-                    if not sender_id:
-                        continue
-
-                    if sender_id in user_sessions and time.time() - user_sessions[sender_id] < SESSION_COOLDOWN:
-                        continue
-                    user_sessions[sender_id] = time.time()
-
-                    threading.Thread(target=process_event, args=(event,)).start()
-
-        return "ok", 200
+        print("Error in handle_commands:", e)
+        return "Oops, something went wrong processing that request!"
 
 @app.route('/', methods=['GET'])
 def home():
-    return "StudyBuddy v14.39.8", 200
+    return "StudyBuddy Bot is live and running!", 200
+
+@app.route('/webhook', methods=['GET'])
+def verify():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        return challenge, 200
+    return "Verification failed", 403
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    if not verify_signature(request):
+        abort(403)
+
+    data = request.get_json()
+
+    if data.get("object") == "page":
+        for entry in data.get("entry", []):
+            for messaging_event in entry.get("messaging", []):
+                sender_id = messaging_event["sender"]["id"]
+
+                # 1. Handle regular text messages
+                if "message" in messaging_event and "text" in messaging_event["message"]:
+                    user_message = messaging_event["message"]["text"]
+
+                    if user_sessions.get(sender_id):
+                        continue
+                    user_sessions[sender_id] = True
+
+                    try:
+                        reply = handle_commands(user_message, sender_id)
+                        if reply:
+                            send_message(sender_id, reply)
+                    finally:
+                        user_sessions.pop(sender_id, None)
+
+                # 2. Handle button postbacks (Price Tips, See All, Details, etc.)
+                elif "postback" in messaging_event:
+                    payload = messaging_event["postback"].get("payload", "")
+
+                    if payload == "shop":
+                        send_product_carousel(sender_id)
+
+                    elif payload.startswith("compare_"):
+                        product_key = payload.replace("compare_", "")
+                        if product_key in PRODUCT_MAP:
+                            prod = PRODUCT_MAP[product_key]
+                            tip_msg = (
+                                f"💡 *Price Tip for {prod['name']}*:\n\n"
+                                f"Check Shopee Mall daily vouchers or monthly mega sales (e.g., 3.3 / 11.11)! "
+                                f"Stack shop vouchers with Shopee Pay discount vouchers at checkout for the maximum discount."
+                            )
+                            send_message(sender_id, tip_msg)
+
+                    elif payload.startswith("details_"):
+                        product_key = payload.replace("details_", "")
+                        if product_key in PRODUCT_MAP:
+                            get_affiliate_reply(sender_id, product_key)
+
+    return "EVENT_RECEIVED", 200
+
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
