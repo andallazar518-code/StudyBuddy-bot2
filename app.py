@@ -89,7 +89,8 @@ PRODUCT_MAP = {
 def get_tracked_link(base_url, sender_id, product="store"):
   tracker = f"aff_id={AFFILIATE_ID}_{sender_id}_{product}"
   separator = "&" if "?" in base_url else "?"
-  return f"{base_url}{separator}{tracker}"
+  full_url = f"{base_url}{separator}{tracker}"
+  return full_url.replace(" ", "")
 
 
 def get_dynamic_shopee_search_link(user_message, sender_id):
