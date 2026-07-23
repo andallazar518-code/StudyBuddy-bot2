@@ -87,7 +87,8 @@ PRODUCT_MAP = {
 
 def get_tracked_link(base_url, sender_id, product="store"):
   tracker = f"aff_id={AFFILIATE_ID}_{sender_id}_{product}"
-  return f"{base_url}&{tracker}" if "?" in base_url else f"{base_url}?{tracker}"
+  separator = "&" if "?" in base_url else "?"
+  return f"{base_url}{separator}{tracker}"
 
 
 def setup_menu():
@@ -312,13 +313,13 @@ def handle_incoming_message(sender_id, text):
     )
     return
 
-  # Kapag bagong salta o nag-hi/hello, isasama ang Set Name
   if text_lower in ["hi", "hello", "start"]:
     name = user.get("name") or "there"
+    qr = welcome_quick_replies if not user.get("name") else standard_quick_replies
     send_message(
         sender_id,
         f"Hello {name}! 👋\n\n📚 Need school supplies? I have vouchers.\n\nWant it?",
-        quick_replies=welcome_quick_replies,
+        quick_replies=qr,
     )
     return
 
@@ -351,7 +352,6 @@ def handle_incoming_message(sender_id, text):
 
   update_user(sender_id, {"conversation_history": history, "chat_count": chat_count})
   
-  # Regular chat responses ay Shop at Clear Memory na lang (standard)
   send_message(
       sender_id,
       bot_reply,
@@ -387,8 +387,7 @@ def handle_postback(sender_id, payload):
         quick_replies=standard_quick_replies,
     )
   elif payload == "clear_memory":
-    update_user(sender_id, {"conversation_history": [], "chat_count": 0})
-    # Pagkatapos mag-Clear Memory, isasama ang Set Name sa quick replies
+    update_user(sender_id, {"conversation_history": [], "chat_count": 0, "name": None, "waiting_for_name": False})
     send_message(
         sender_id,
         "🧠 Na-clear ko na ang memory natin. Fresh start na tayo!",
