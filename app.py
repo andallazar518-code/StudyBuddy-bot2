@@ -287,54 +287,59 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
-  attempts_plan = [
-      {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
-      {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
-  ]
-  
-  if GROQ_API_KEY_2:
-    attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
-    attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
+    # Priority: Llama 4 > Llama 3.3 > Llama 3.1
+    # Tries KEY1 first, then KEY2 for rate limit balancing
+    attempts_plan = [
+        {"model": "llama-4-scout-17b-16e-instruct", "key": GROQ_API_KEY_1}, # Llama 4 FAST - Free
+        {"model": "llama-4-maverick-17b-128e-instruct", "key": GROQ_API_KEY_1}, # Llama 4 BIG - Free
+        {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1}, # Your old model
+        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1}, # Your old fallback
+    ]
 
-  for plan in attempts_plan:
-    if not plan["key"]:
-      continue
-      
-    headers = {
-        "Authorization": f"Bearer {plan['key']}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": plan["model"],
-        "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": 300,
-    }
-    
-    for attempt in range(2):
-      try:
-        res = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=12,
-        )
-        if res.status_code == 200:
-          return res.json()["choices"][0]["message"]["content"]
-        elif res.status_code == 429:
-          print(f"Rate limited (429) on {plan['model']}. Retrying...")
-          time.sleep(1.5)
-          continue
-        else:
-          break
-      except requests.exceptions.RequestException as e:
-        print(f"GROQ API ERROR on {plan['model']}:", e)
-        time.sleep(1)
+    if GROQ_API_KEY_2: # Secondary key for more RPM
+        attempts_plan.append({"model": "llama-4-scout-17b-16e-instruct", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "llama-4-maverick-17b-128e-instruct", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
 
-  return (
-      "I'm having a little trouble thinking right now. Please try again in a"
-      " moment! 😅"
-  )
+    for plan in attempts_plan:
+        if not plan["key"]:
+            continue
+        headers = {
+            "Authorization": f"Bearer {plan['key']}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": plan["model"],
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 300,
+        }
+        for attempt in range(2): # 2 retries per model
+            try:
+                res = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=12,
+                )
+                if res.status_code == 200:
+                    return res.json()["choices"][0]["message"]["content"]
+                elif res.status_code == 429: # Rate limited
+                    print(f"Rate limited (429) on {plan['model']} with key...{plan['key'][-4:]}. Waiting 3s and retrying...")
+                    time.sleep(3) # increased wait for free tier
+                    continue
+                else:
+                    print(f"Groq API error {res.status_code} on {plan['model']}: {res.text}")
+                    break # try next model/key
+            except requests.exceptions.RequestException as e:
+                print(f"GROQ API ERROR on {plan['model']}:", e)
+                time.sleep(1)
+
+    return (
+        "I'm having a little trouble thinking right now. Please try again in a"
+        " moment! 😅"
+    )
 
 
 def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
