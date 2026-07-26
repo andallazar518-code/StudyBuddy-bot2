@@ -287,24 +287,22 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
-    # Priority: Llama 4 > Llama 3.3 > Llama 3.1
-    # Tries KEY1 first, then KEY2 for rate limit balancing
+    # Priority: Llama 3.3 > Llama 3.1 > Gemma2
     attempts_plan = [
-        {"model": "llama-4-scout-17b-16e-instruct", "key": GROQ_API_KEY_1}, # Llama 4 FAST - Free
-        {"model": "llama-4-maverick-17b-128e-instruct", "key": GROQ_API_KEY_1}, # Llama 4 BIG - Free
-        {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1}, # Your old model
-        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1}, # Your old fallback
+        {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
+        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
+        {"model": "gemma2-9b-it", "key": GROQ_API_KEY_1}, # Google backup
     ]
 
-    if GROQ_API_KEY_2: # Secondary key for more RPM
-        attempts_plan.append({"model": "llama-4-scout-17b-16e-instruct", "key": GROQ_API_KEY_2})
-        attempts_plan.append({"model": "llama-4-maverick-17b-128e-instruct", "key": GROQ_API_KEY_2})
+    if GROQ_API_KEY_2: # Secondary key = doubles your 30 RPM
         attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
         attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "gemma2-9b-it", "key": GROQ_API_KEY_2})
 
     for plan in attempts_plan:
         if not plan["key"]:
             continue
+
         headers = {
             "Authorization": f"Bearer {plan['key']}",
             "Content-Type": "application/json",
@@ -315,6 +313,7 @@ def call_groq_api(messages):
             "temperature": 0.7,
             "max_tokens": 300,
         }
+
         for attempt in range(2): # 2 retries per model
             try:
                 res = requests.post(
@@ -323,23 +322,28 @@ def call_groq_api(messages):
                     headers=headers,
                     timeout=12,
                 )
+
                 if res.status_code == 200:
+                    model_used = plan["model"]
+                    key_used = f"...{plan['key'][-4:]}" # show last 4 chars only
+                    print(f"[GROQ SUCCESS] Model: {model_used} | Key: {key_used} | Attempt: {attempt+1}")
                     return res.json()["choices"][0]["message"]["content"]
+
                 elif res.status_code == 429: # Rate limited
-                    print(f"Rate limited (429) on {plan['model']} with key...{plan['key'][-4:]}. Waiting 3s and retrying...")
-                    time.sleep(3) # increased wait for free tier
+                    print(f"[GROQ 429] Rate limited on {plan['model']} with key {key_used}. Waiting 3s...")
+                    time.sleep(3)
                     continue
+
                 else:
-                    print(f"Groq API error {res.status_code} on {plan['model']}: {res.text}")
+                    print(f"[GROQ ERROR {res.status_code}] on {plan['model']}: {res.text}")
                     break # try next model/key
+
             except requests.exceptions.RequestException as e:
-                print(f"GROQ API ERROR on {plan['model']}:", e)
+                print(f"[GROQ EXCEPTION] on {plan['model']}: {e}")
                 time.sleep(1)
 
-    return (
-        "I'm having a little trouble thinking right now. Please try again in a"
-        " moment! 😅"
-    )
+    print("[GROQ FAILED] All models and keys failed")
+    return "I'm having a little trouble thinking right now. Please try again in a moment! 😅"
 
 
 def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
@@ -399,7 +403,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
     name = user.get("name") or "there"
     send_message(
         sender_id,
-        f"Hello {name}! 👋\n\n📚 Need school supplies? I have vouchers.\n\nWant it?",
+        f"Hello {name}! 👋\n\nAsk anything and I'll answer it for you. 😊\n\n📚 Need school supplies? I also have vouchers.\n\nWant it?",
         quick_replies=current_qr,
     )
     return
