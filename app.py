@@ -31,7 +31,7 @@ supabase = (
     else None
 )
 user_sessions = {}
-SESSION_COOLDOWN = 3.0
+SESSION_COOLDOWN = 4.0
 last_request_times = {}
 
 AFFILIATE_ID = "test123"
@@ -454,7 +454,7 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
         f"\n\n🔍 I couldn't find that exact item in our featured list, but you can search and check it here with our vouchers:\n"
         f"👉 {search_tracked_url}"
     )
-  elif chat_count % 4 == 0:
+  elif chat_count % 5 == 0:
     prod_key = random.choice(list(PRODUCT_MAP.keys()))
     prod = PRODUCT_MAP[prod_key]
     tracked_url = get_tracked_link(prod["shopee"], sender_id, prod_key)
