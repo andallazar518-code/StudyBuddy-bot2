@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import json
@@ -335,6 +336,20 @@ def call_groq_api(messages):
 
 
 def call_groq_vision_api(image_url, prompt="What is in this image?"):
+    base64_image_data = None
+    try:
+        img_res = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if img_res.status_code == 200:
+            encoded = base64.b64encode(img_res.content).decode("utf-8")
+            base64_image_data = f"data:image/jpeg;base64,{encoded}"
+        else:
+            print(f"[IMAGE FETCH FAILED] Status code: {img_res.status_code}")
+    except Exception as e:
+        print(f"[IMAGE DOWNLOAD EXCEPTION]: {e}")
+
+    if not base64_image_data:
+        return "I couldn't download or process the image file you sent! 😅"
+
     attempts_plan = [
         {"model": "llama-3.2-11b-vision-preview", "key": GROQ_API_KEY_1},
         {"model": "llama-3.2-90b-vision-preview", "key": GROQ_API_KEY_1},
@@ -349,7 +364,7 @@ def call_groq_vision_api(image_url, prompt="What is in this image?"):
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": image_url}},
+                {"type": "image_url", "image_url": {"url": base64_image_data}},
             ],
         }
     ]
