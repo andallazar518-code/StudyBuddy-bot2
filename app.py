@@ -88,7 +88,6 @@ PRODUCT_MAP = {
     },
 }
 
-
 def get_tracked_link(base_url, sender_id, product="store"):
   return base_url.strip()
 
@@ -128,6 +127,10 @@ def setup_menu():
     requests.post(url, json=payload, timeout=10)
   except requests.exceptions.RequestException:
     pass
+
+# FIX 3: Force the persistent menu to setup when Render (Gunicorn) starts the app
+with app.app_context():
+    threading.Thread(target=setup_menu).start()
 
 
 def verify_signature(req):
@@ -287,17 +290,15 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
-    # Priority: Llama 3.3 > Llama 3.1 > Gemma2
+    # Priority: Llama 3.3 > Llama 3.1 (Gemma removed)
     attempts_plan = [
         {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
         {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
-        {"model": "gemma2-9b-it", "key": GROQ_API_KEY_1}, # Google backup
     ]
 
-    if GROQ_API_KEY_2: # Secondary key = doubles your 30 RPM
+    if GROQ_API_KEY_2: # Secondary key = doubles your capacity
         attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
         attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
-        attempts_plan.append({"model": "gemma2-9b-it", "key": GROQ_API_KEY_2})
 
     for plan in attempts_plan:
         if not plan["key"]:
@@ -330,9 +331,9 @@ def call_groq_api(messages):
                     return res.json()["choices"][0]["message"]["content"]
 
                 elif res.status_code == 429: # Rate limited
-                    print(f"[GROQ 429] Rate limited on {plan['model']} with key {key_used}. Waiting 3s...")
-                    time.sleep(3)
-                    continue
+                    # FIX 2: Break instantly on rate limits to immediately trigger the fallback model
+                    print(f"[GROQ 429] Rate limited on {plan['model']}. Switching models...")
+                    break 
 
                 else:
                     print(f"[GROQ ERROR {res.status_code}] on {plan['model']}: {res.text}")
@@ -357,7 +358,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
 
   user = get_user(sender_id)
   text_lower = text.strip().lower()
-  qr_text_lower = qr_text.strip().lower()
 
   standard_quick_replies = [
       {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
@@ -372,14 +372,14 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
 
   effective_payload = quick_reply_payload
   if not effective_payload:
-    combined_check = f"{text_lower} {qr_text_lower}"
-    if "shop" in combined_check:
+    # FIX 1: Exact matching so standard conversation words don't hijack the prompt
+    if text_lower == "shop":
       effective_payload = "shop"
-    elif "set name" in combined_check or "set_name" in combined_check:
+    elif text_lower in ["set name", "set_name"]:
       effective_payload = "set_name"
-    elif "clear memory" in combined_check or "clear_memory" in combined_check:
+    elif text_lower in ["clear memory", "clear_memory"]:
       effective_payload = "clear_memory"
-    elif "help" in combined_check:
+    elif text_lower == "help":
       effective_payload = "help"
 
   if effective_payload:
@@ -552,8 +552,11 @@ def webhook():
             if messaging.get("message"):
               msg = messaging["message"]
               text = msg.get("text", "")
-              qr_payload = messaging.get("message", {}).get("quick_reply", {}).get("payload")
+              
+              # FIX 4: Cleaned up the redundant .get() extraction
+              qr_payload = msg.get("quick_reply", {}).get("payload")
               qr_text = msg.get("text", "") if qr_payload else ""
+              
               if text or qr_payload:
                 threading.Thread(
                     target=handle_incoming_message,
