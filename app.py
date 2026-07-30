@@ -128,7 +128,6 @@ def setup_menu():
   except requests.exceptions.RequestException:
     pass
 
-# FIX 3: Force the persistent menu to setup when Render (Gunicorn) starts the app
 with app.app_context():
     threading.Thread(target=setup_menu).start()
 
@@ -290,13 +289,12 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
-    # Priority: Llama 3.3 > Llama 3.1 (Gemma removed)
     attempts_plan = [
         {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
         {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
     ]
 
-    if GROQ_API_KEY_2: # Secondary key = doubles your capacity
+    if GROQ_API_KEY_2:
         attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
         attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
 
@@ -315,7 +313,7 @@ def call_groq_api(messages):
             "max_tokens": 300,
         }
 
-        for attempt in range(2): # 2 retries per model
+        for attempt in range(2):
             try:
                 res = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",
@@ -325,26 +323,92 @@ def call_groq_api(messages):
                 )
 
                 if res.status_code == 200:
-                    model_used = plan["model"]
-                    key_used = f"...{plan['key'][-4:]}" # show last 4 chars only
-                    print(f"[GROQ SUCCESS] Model: {model_used} | Key: {key_used} | Attempt: {attempt+1}")
                     return res.json()["choices"][0]["message"]["content"]
-
-                elif res.status_code == 429: # Rate limited
-                    # FIX 2: Break instantly on rate limits to immediately trigger the fallback model
-                    print(f"[GROQ 429] Rate limited on {plan['model']}. Switching models...")
-                    break 
-
+                elif res.status_code == 429:
+                    break
                 else:
-                    print(f"[GROQ ERROR {res.status_code}] on {plan['model']}: {res.text}")
-                    break # try next model/key
-
-            except requests.exceptions.RequestException as e:
-                print(f"[GROQ EXCEPTION] on {plan['model']}: {e}")
+                    break
+            except requests.exceptions.RequestException:
                 time.sleep(1)
 
-    print("[GROQ FAILED] All models and keys failed")
     return "I'm having a little trouble thinking right now. Please try again in a moment! 😅"
+
+
+def call_groq_vision_api(image_url, prompt="What is in this image?"):
+    attempts_plan = [
+        {"model": "llama-3.2-11b-vision-preview", "key": GROQ_API_KEY_1},
+        {"model": "llama-3.2-90b-vision-preview", "key": GROQ_API_KEY_1},
+    ]
+
+    if GROQ_API_KEY_2:
+        attempts_plan.append({"model": "llama-3.2-11b-vision-preview", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "llama-3.2-90b-vision-preview", "key": GROQ_API_KEY_2})
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": image_url}},
+            ],
+        }
+    ]
+
+    for plan in attempts_plan:
+        if not plan["key"]:
+            continue
+
+        headers = {
+            "Authorization": f"Bearer {plan['key']}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": plan["model"],
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 300,
+        }
+
+        try:
+            res = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=15,
+            )
+
+            if res.status_code == 200:
+                return res.json()["choices"][0]["message"]["content"]
+            elif res.status_code == 429:
+                break
+            else:
+                break
+        except requests.exceptions.RequestException:
+            pass
+
+    return "I received your image, but I'm having trouble analyzing it right now! 😅"
+
+
+def handle_image_message(sender_id, image_url, caption=""):
+  send_typing_indicator(sender_id, "typing_on")
+  
+  user = get_user(sender_id)
+  prompt = caption if caption else "Please describe this image and explain anything related to studies or school if applicable."
+  
+  bot_reply = call_groq_vision_api(image_url, prompt)
+  
+  history = user.get("conversation_history", [])
+  history.append({"role": "user", "content": f"[Sent an image] {caption}"})
+  history.append({"role": "assistant", "content": bot_reply})
+  
+  update_user(sender_id, {"conversation_history": history})
+  
+  standard_quick_replies = [
+      {"content_type": "text", "title": "🛒 Shop", "payload": "shop"},
+      {"content_type": "text", "title": "🧠 Clear Memory", "payload": "clear_memory"},
+  ]
+  
+  send_message(sender_id, bot_reply, quick_replies=standard_quick_replies)
 
 
 def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text=""):
@@ -372,7 +436,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
 
   effective_payload = quick_reply_payload
   if not effective_payload:
-    # FIX 1: Exact matching so standard conversation words don't hijack the prompt
     if text_lower == "shop":
       effective_payload = "shop"
     elif text_lower in ["set name", "set_name"]:
@@ -408,7 +471,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
     )
     return
 
-  # --- SMART PRODUCT / ITEM FINDER LOGIC ---
   matched_product = None
   for key, prod in PRODUCT_MAP.items():
     if key in text_lower or any(word in text_lower for word in prod["name"].lower().split()):
@@ -428,7 +490,6 @@ def handle_incoming_message(sender_id, text, quick_reply_payload=None, qr_text="
       ),
   }
 
-  # --- QUICK MATH INTERCEPTOR ---
   math_match = re.search(r"(\d+)\s*[\*xX]\s*(\d+)", text)
   if math_match:
     num1 = int(math_match.group(1))
@@ -553,11 +614,22 @@ def webhook():
               msg = messaging["message"]
               text = msg.get("text", "")
               
-              # FIX 4: Cleaned up the redundant .get() extraction
+              attachments = msg.get("attachments", [])
+              image_url = None
+              for att in attachments:
+                if att.get("type") == "image":
+                  image_url = att.get("payload", {}).get("url")
+                  break
+
               qr_payload = msg.get("quick_reply", {}).get("payload")
               qr_text = msg.get("text", "") if qr_payload else ""
               
-              if text or qr_payload:
+              if image_url:
+                threading.Thread(
+                    target=handle_image_message,
+                    args=(sender_id, image_url, text)
+                ).start()
+              elif text or qr_payload:
                 threading.Thread(
                     target=handle_incoming_message,
                     args=(sender_id, text, qr_payload, qr_text)
