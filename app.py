@@ -394,12 +394,12 @@ def call_groq_vision_api(image_url, prompt="What is in this image?"):
 
             if res.status_code == 200:
                 return res.json()["choices"][0]["message"]["content"]
-            elif res.status_code == 429:
-                break
             else:
-                break
-        except requests.exceptions.RequestException:
-            pass
+                print(f"[GROQ VISION ERROR] Model {plan['model']} returned status {res.status_code}: {res.text}")
+                if res.status_code == 429:
+                    continue
+        except requests.exceptions.RequestException as e:
+            print(f"[GROQ VISION EXCEPTION]: {e}")
 
     return "I received your image, but I'm having trouble analyzing it right now! 😅"
 
