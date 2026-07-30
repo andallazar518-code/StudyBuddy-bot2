@@ -338,7 +338,13 @@ def call_groq_api(messages):
 def call_groq_vision_api(image_url, prompt="What is in this image?"):
     base64_image_data = None
     try:
-        img_res = requests.get(image_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        headers_img = {"User-Agent": "Mozilla/5.0"}
+        # Pass token if fetching FB image URL directly
+        if PAGE_ACCESS_TOKEN and "facebook.com" in image_url:
+            img_res = requests.get(f"{image_url}&access_token={PAGE_ACCESS_TOKEN}", headers=headers_img, timeout=10)
+        else:
+            img_res = requests.get(image_url, headers=headers_img, timeout=10)
+
         if img_res.status_code == 200:
             encoded = base64.b64encode(img_res.content).decode("utf-8")
             base64_image_data = f"data:image/jpeg;base64,{encoded}"
