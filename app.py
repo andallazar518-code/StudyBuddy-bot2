@@ -291,13 +291,13 @@ def call_groq_api(messages):
     attempts_plan = [
         {"model": "openai/gpt-oss-120b", "key": GROQ_API_KEY_1},
         {"model": "qwen/qwen3-32b", "key": GROQ_API_KEY_1},
-        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1}, # Google backup
+        {"model": "openai/gpt-oss-20b", "key": GROQ_API_KEY_1}, # Google backup
     ]
 
     if GROQ_API_KEY_2: # Secondary key = doubles your 30 RPM
         attempts_plan.append({"model": "openai/gpt-oss-120b", "key": GROQ_API_KEY_2})
-        attempts_plan.append({"model": "qwen/qwen3-32", "key": GROQ_API_KEY_2})
-        attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "qwen/qwen3-32b", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "openai/gpt-oss-20b", "key": GROQ_API_KEY_2})
 
     for plan in attempts_plan:
         if not plan["key"]:
