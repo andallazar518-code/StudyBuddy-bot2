@@ -289,15 +289,15 @@ def send_button_template(sender_id, text, buttons):
 def call_groq_api(messages):
     # Priority: Llama 3.3 > Llama 3.1 > Gemma2
     attempts_plan = [
-        {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
-        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
-        {"model": "gemma2-9b-it", "key": GROQ_API_KEY_1}, # Google backup
+        {"model": "openai/gpt-oss-120b", "key": GROQ_API_KEY_1},
+        {"model": "qwen/qwen3-32b", "key": GROQ_API_KEY_1},
+        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1}, # Google backup
     ]
 
     if GROQ_API_KEY_2: # Secondary key = doubles your 30 RPM
-        attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "openai/gpt-oss-120b", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "qwen/qwen3-32", "key": GROQ_API_KEY_2})
         attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
-        attempts_plan.append({"model": "gemma2-9b-it", "key": GROQ_API_KEY_2})
 
     for plan in attempts_plan:
         if not plan["key"]:
