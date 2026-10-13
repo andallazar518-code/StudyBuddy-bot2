@@ -287,13 +287,12 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
-    # Updated to valid, highly reliable Groq models
     attempts_plan = [
         {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
         {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
     ]
 
-    if GROQ_API_KEY_2: # Secondary key for load balancing
+    if GROQ_API_KEY_2:
         attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
         attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
 
@@ -312,7 +311,7 @@ def call_groq_api(messages):
             "max_tokens": 300,
         }
 
-        for attempt in range(2): # 2 retries per model
+        for attempt in range(2):
             try:
                 res = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",
@@ -322,21 +321,29 @@ def call_groq_api(messages):
                 )
 
                 if res.status_code == 200:
-                    model_used = plan["model"]
-                    key_used = f"...{plan['key'][-4:]}" # show last 4 chars only
-                    print(f"[GROQ SUCCESS] Model: {model_used} | Key: {key_used} | Attempt: {attempt+1}")
-                    return res.json()["choices"][0]["message"]["content"]
+                    data = res.json()
+                    choices = data.get("choices", [])
+                    if choices:
+                        message_obj = choices[0].get("message", {})
+                        content = message_obj.get("content")
+                        if content:
+                            model_used = plan["model"]
+                            key_used = f"...{plan['key'][-4:]}"
+                            print(f"[GROQ SUCCESS] Model: {model_used} | Key: {key_used} | Attempt: {attempt+1}")
+                            return content
+                    print(f"[GROQ PARSE ERROR] Unexpected payload structure: {data}")
+                    break
 
-                elif res.status_code == 429: # Rate limited
-                    print(f"[GROQ 429] Rate limited on {plan['model']} with key {key_used}. Waiting 3s...")
+                elif res.status_code == 429:
+                    print(f"[GROQ 429] Rate limited on {plan['model']}. Waiting 3s...")
                     time.sleep(3)
                     continue
 
                 else:
                     print(f"[GROQ ERROR {res.status_code}] on {plan['model']}: {res.text}")
-                    break # try next model/key
+                    break
 
-            except requests.exceptions.RequestException as e:
+            except Exception as e:
                 print(f"[GROQ EXCEPTION] on {plan['model']}: {e}")
                 time.sleep(1)
 
