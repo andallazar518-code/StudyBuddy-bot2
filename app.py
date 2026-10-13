@@ -287,14 +287,13 @@ def send_button_template(sender_id, text, buttons):
 
 
 def call_groq_api(messages):
+    # Updated to valid active Groq model
     attempts_plan = [
-        {"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_1},
-        {"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_1},
+        {"model": "qwen/qwen3.8-27b", "key": GROQ_API_KEY_1},
     ]
 
     if GROQ_API_KEY_2:
-        attempts_plan.append({"model": "llama-3.3-70b-versatile", "key": GROQ_API_KEY_2})
-        attempts_plan.append({"model": "llama-3.1-8b-instant", "key": GROQ_API_KEY_2})
+        attempts_plan.append({"model": "qwen/qwen3.8-27b", "key": GROQ_API_KEY_2})
 
     for plan in attempts_plan:
         if not plan["key"]:
